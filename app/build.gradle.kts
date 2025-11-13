@@ -2,9 +2,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.hilt.ksp)
-    alias(libs.plugins.hilt.android)
-    alias(libs.plugins.room.android)
 }
 
 android {
@@ -41,11 +38,6 @@ android {
     }
     buildFeatures {
         compose = true
-        buildConfig = true
-    }
-
-    room{
-        schemaDirectory("$projectDir/schemas")
     }
 }
 
@@ -65,24 +57,4 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-
-    //Splash Api
-    implementation(libs.androidx.core.splashscreen)
-
-    //Compose Navigation
-    implementation(libs.androidx.navigation.compose)
-
-    //Retrofit
-    implementation(libs.retrofit)
-    implementation(libs.converter.gson)
-
-    //Dagger Hilt
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.android.compiler)
-    implementation(libs.androidx.hilt.navigation.compose)
-
-    //Room
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    ksp(libs.androidx.room.compiler)
 }
