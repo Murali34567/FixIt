@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!-- Main App Theme - This is what runs after splash -->
     <style name="Theme.FixIt" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>
