@@ -16,10 +16,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 
-/**
- * Login form component with email/password fields
- * Includes validation and forgot password option
- */
 @Composable
 fun LoginForm(
     viewModel: AuthViewModel,

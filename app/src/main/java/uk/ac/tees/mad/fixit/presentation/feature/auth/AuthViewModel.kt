@@ -17,10 +17,6 @@ data class AuthUiState(
     val isSuccess: Boolean = false
 )
 
-/**
- * ViewModel for authentication operations
- * Handles login, signup, and password reset
- */
 class AuthViewModel(
     private val authRepository: AuthRepository = AuthRepository()
 ) : ViewModel() {

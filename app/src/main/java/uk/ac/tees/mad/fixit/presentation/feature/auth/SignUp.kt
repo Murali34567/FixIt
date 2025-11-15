@@ -15,10 +15,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 
-/**
- * Sign up form component with email/password/confirm password fields
- * Includes comprehensive validation
- */
 @Composable
 fun SignUpForm(
     viewModel: AuthViewModel,

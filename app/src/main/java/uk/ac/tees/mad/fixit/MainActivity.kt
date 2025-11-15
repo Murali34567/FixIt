@@ -12,7 +12,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.compose.rememberNavController
 import uk.ac.tees.mad.fixit.domain.repository.AuthRepository
 import uk.ac.tees.mad.fixit.presentation.navigation.Screen
-import uk.ac.tees.mad.fixit.presentation.navigation.fixitNav.NavGraph
+import uk.ac.tees.mad.fixit.presentation.navigation.NavGraph
 import uk.ac.tees.mad.fixit.ui.theme.FixItTheme
 
 class MainActivity : ComponentActivity() {
@@ -22,10 +22,11 @@ class MainActivity : ComponentActivity() {
 
         installSplashScreen()
 
+
         val authRepository = AuthRepository()
 
         val startDestination = if (authRepository.isUserAuthenticated()) {
-            Screen.Home.route
+            Screen.Main.route
         } else {
             Screen.Auth.route
         }

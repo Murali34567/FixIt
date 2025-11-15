@@ -18,10 +18,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import uk.ac.tees.mad.fixit.presentation.navigation.Screen
 
-/**
- * Authentication screen with login and signup tabs
- * Handles user authentication and navigation to home screen
- */
 @Composable
 fun AuthScreen(
     navController: NavHostController,
@@ -34,7 +30,7 @@ fun AuthScreen(
     // Navigate to home on successful authentication
     LaunchedEffect(uiState.isSuccess) {
         if (uiState.isSuccess) {
-            navController.navigate(Screen.Home.route) {
+            navController.navigate(Screen.Main.route) {
                 popUpTo(Screen.Auth.route) { inclusive = true }
             }
         }
@@ -51,6 +47,7 @@ fun AuthScreen(
                     )
                 )
             )
+            .statusBarsPadding() // Add padding for status bar
     ) {
         Column(
             modifier = Modifier

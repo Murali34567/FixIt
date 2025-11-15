@@ -7,33 +7,17 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import uk.ac.tees.mad.fixit.data.model.AuthResult
 
-/**
- * Repository for handling all Firebase Authentication operations
- * Implements single source of truth pattern
- */
 class AuthRepository {
 
     private val firebaseAuth: FirebaseAuth = FirebaseAuth.getInstance()
 
-    /**
-     * Get currently authenticated user
-     */
     val currentUser: FirebaseUser?
         get() = firebaseAuth.currentUser
 
-    /**
-     * Check if user is currently authenticated
-     */
     fun isUserAuthenticated(): Boolean {
         return currentUser != null
     }
 
-    /**
-     * Register new user with email and password
-     * @param email User's email address
-     * @param password User's password (min 6 characters)
-     * @return Flow emitting AuthResult states
-     */
     suspend fun signUp(email: String, password: String): Flow<AuthResult> = flow {
         try {
             emit(AuthResult.Loading)
@@ -45,12 +29,6 @@ class AuthRepository {
         }
     }
 
-    /**
-     * Login existing user with email and password
-     * @param email User's email address
-     * @param password User's password
-     * @return Flow emitting AuthResult states
-     */
     suspend fun login(email: String, password: String): Flow<AuthResult> = flow {
         try {
             emit(AuthResult.Loading)
@@ -62,12 +40,6 @@ class AuthRepository {
         }
     }
 
-    /**
-     *
-     * Send password reset email
-     * @param email User's registered email address
-     * @return Flow emitting AuthResult states
-     */
     suspend fun resetPassword(email: String): Flow<AuthResult> = flow {
         try {
             emit(AuthResult.Loading)
@@ -78,9 +50,6 @@ class AuthRepository {
         }
     }
 
-    /**
-     * Sign out current user
-     */
     fun signOut() {
         firebaseAuth.signOut()
     }
