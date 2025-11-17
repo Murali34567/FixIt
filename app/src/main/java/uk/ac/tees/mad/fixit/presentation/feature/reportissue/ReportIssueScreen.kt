@@ -16,9 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import uk.ac.tees.mad.fixit.data.model.IssueType
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,6 +31,16 @@ fun ReportIssueScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val scrollState = rememberScrollState()
+    val context = LocalContext.current
+
+    // Create image picker handler
+    val imagePickerHandler = remember {
+        ImagePickerHandler(context) { uri ->
+            viewModel.updateImageUri(uri)
+        }
+    }
+
+    val imagePickerLaunchers = imagePickerHandler.createImagePickerLaunchers()
 
     Scaffold(
         topBar = {
@@ -62,7 +75,9 @@ fun ReportIssueScreen(
                 ImagePickerSection(
                     imageUri = uiState.imageUri,
                     imageError = uiState.imageError,
-                    onImagePick = { /* TODO: Implement in Part 2 */ }
+                    onCameraClick = imagePickerLaunchers.onCameraClick,
+                    onGalleryClick = imagePickerLaunchers.onGalleryClick,
+                    onRemoveImage = { viewModel.removeImage() }
                 )
 
                 // Description Section
@@ -112,7 +127,9 @@ fun ReportIssueScreen(
 private fun ImagePickerSection(
     imageUri: android.net.Uri?,
     imageError: String?,
-    onImagePick: () -> Unit
+    onCameraClick: () -> Unit,
+    onGalleryClick: () -> Unit,
+    onRemoveImage: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -161,22 +178,34 @@ private fun ImagePickerSection(
                 contentAlignment = Alignment.Center
             ) {
                 if (imageUri != null) {
-                    // TODO: Display image in Part 2
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = "Image selected",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(48.dp)
+                    // Display actual image with remove option
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        AsyncImage(
+                            model = imageUri,
+                            contentDescription = "Selected issue image",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(12.dp)),
+                            contentScale = ContentScale.Crop
                         )
-                        Text(
-                            text = "Image Selected",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+
+                        // Remove image button
+                        IconButton(
+                            onClick = onRemoveImage,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .background(
+                                    Color.Black.copy(alpha = 0.5f),
+                                    RoundedCornerShape(8.dp)
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Remove image",
+                                tint = Color.White
+                            )
+                        }
                     }
                 } else {
                     Column(
@@ -213,7 +242,7 @@ private fun ImagePickerSection(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedButton(
-                    onClick = onImagePick,
+                    onClick = onCameraClick,
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
@@ -226,7 +255,7 @@ private fun ImagePickerSection(
                 }
 
                 OutlinedButton(
-                    onClick = onImagePick,
+                    onClick = onGalleryClick,
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
@@ -240,6 +269,18 @@ private fun ImagePickerSection(
             }
         }
     }
+}
+
+// Rest of the file remains the same until getIconForIssueType...
+
+@Composable
+private fun getIconForIssueType(issueType: IssueType) = when (issueType) {
+    IssueType.POTHOLE -> Icons.Default.Warning
+    IssueType.STREETLIGHT -> Icons.Default.Info
+    IssueType.GARBAGE -> Icons.Default.Delete
+    IssueType.DRAINAGE -> Icons.Default.Refresh
+    IssueType.ROAD_DAMAGE -> Icons.Default.Build
+    IssueType.OTHER -> Icons.Default.Info
 }
 
 @Composable
@@ -518,7 +559,6 @@ private fun SubmitButton(
         }
     }
 }
-
 @Composable
 private fun ErrorCard(message: String) {
     Card(
@@ -571,17 +611,4 @@ private fun LoadingOverlay() {
             }
         }
     }
-}
-
-/**
- * Get icon for each issue type
- */
-@Composable
-private fun getIconForIssueType(issueType: IssueType) = when (issueType) {
-    IssueType.POTHOLE -> Icons.Default.Warning
-    IssueType.STREETLIGHT -> Icons.Default.Email
-    IssueType.GARBAGE -> Icons.Default.Delete
-    IssueType.DRAINAGE -> Icons.Default.Email
-    IssueType.ROAD_DAMAGE -> Icons.Default.Email
-    IssueType.OTHER -> Icons.Default.Email
 }

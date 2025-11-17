@@ -17,26 +17,57 @@ class ReportIssueViewModel : ViewModel() {
      * Update the selected image URI
      */
     fun updateImageUri(uri: Uri?) {
-        _uiState.update { it.copy(imageUri = uri, imageError = null) }
+        _uiState.update {
+            it.copy(
+                imageUri = uri,
+                imageError = null,
+                errorMessage = null // Clear general error when image is updated
+            )
+        }
+    }
+
+    /**
+     * Remove the selected image
+     */
+    fun removeImage() {
+        _uiState.update {
+            it.copy(
+                imageUri = null,
+                imageError = null,
+                errorMessage = null // Clear general error when image is removed
+            )
+        }
     }
 
     /**
      * Update the description text
      */
     fun updateDescription(description: String) {
-        _uiState.update { it.copy(description = description, descriptionError = null) }
+        _uiState.update {
+            it.copy(
+                description = description,
+                descriptionError = null,
+                errorMessage = null // Clear general error when description is updated
+            )
+        }
     }
 
     /**
      * Update the selected issue type
      */
     fun updateIssueType(issueType: IssueType) {
-        _uiState.update { it.copy(selectedIssueType = issueType) }
+        _uiState.update {
+            it.copy(
+                selectedIssueType = issueType,
+                errorMessage = null // Clear general error when issue type is updated
+            )
+        }
     }
 
     /**
-     * Clear error message
+     * Clear error message - kept for future use
      */
+    @Suppress("unused") // Will be used in future parts
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
     }
@@ -93,8 +124,9 @@ class ReportIssueViewModel : ViewModel() {
     }
 
     /**
-     * Reset the form
+     * Reset the form - kept for future use (e.g., after successful submission)
      */
+    @Suppress("unused") // Will be used in Parts 4-6
     fun resetForm() {
         _uiState.value = ReportIssueUiState()
     }

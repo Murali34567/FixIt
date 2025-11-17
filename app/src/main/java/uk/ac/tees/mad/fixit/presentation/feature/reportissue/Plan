@@ -1,0 +1,415 @@
+Plan for report issue screen
+
+Part 1: Setup & Basic UI Structure
+Objectives:
+
+Set up dependencies
+Create data models
+Build basic UI layout with form fields
+
+Requirements:
+gradle// In build.gradle.kts (Module: app)
+
+dependencies {
+    // Existing dependencies...
+
+    // Image Loading
+    implementation("io.coil-kt:coil-compose:2.5.0")
+
+    // Firebase Realtime Database
+    implementation("com.google.firebase:firebase-database-ktx:20.3.0")
+
+    // Location Services
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+
+    // Gson for JSON parsing
+    implementation("com.google.code.gson:gson:2.10.1")
+
+    // Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+}
+Steps:
+
+Create Data Models (data/model/IssueReport.kt):
+
+kotlindata class IssueReport(
+    val id: String = "",
+    val userId: String = "",
+    val imageUrl: String = "",
+    val description: String = "",
+    val issueType: IssueType = IssueType.OTHER,
+    val location: Location = Location(),
+    val status: ReportStatus = ReportStatus.PENDING,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class Location(
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val address: String = ""
+)
+
+enum class IssueType {
+    POTHOLE, STREETLIGHT, GARBAGE, DRAINAGE, ROAD_DAMAGE, OTHER
+}
+
+enum class ReportStatus {
+    PENDING, SUBMITTED, IN_PROGRESS, RESOLVED
+}
+
+Create UI State (presentation/feature/reportissue/ReportIssueUiState.kt):
+
+kotlindata class ReportIssueUiState(
+    val imageUri: Uri? = null,
+    val description: String = "",
+    val selectedIssueType: IssueType = IssueType.OTHER,
+    val location: Location? = null,
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
+    val isSubmitted: Boolean = false
+)
+
+Update ReportIssueScreen.kt with:
+
+Image picker section (placeholder)
+Description TextField
+Issue type dropdown
+Location display section (placeholder)
+Submit button
+
+
+
+Deliverable: Basic form UI with state management (no functionality yet)
+
+Part 2: Camera & Image Capture
+Objectives:
+
+Implement camera functionality
+Add image picker for gallery selection
+Display selected/captured image
+
+Requirements:
+kotlin// AndroidManifest.xml permissions
+<uses-feature android:name="android.hardware.camera" android:required="false" />
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+    android:maxSdkVersion="32" />
+gradle// Additional dependency
+implementation("androidx.activity:activity-compose:1.8.2")
+Steps:
+
+Create ImagePickerHandler (presentation/feature/reportissue/ImagePickerHandler.kt):
+
+Handle camera permission requests
+Launch camera intent
+Launch gallery picker
+Process captured/selected image URI
+
+
+Update ViewModel (presentation/feature/reportissue/ReportIssueViewModel.kt):
+
+Add function to update image URI
+Add validation for image
+
+
+Update ReportIssueScreen.kt:
+
+Add permission request launcher
+Add camera/gallery buttons
+Display selected image with Coil
+Add option to remove/change image
+
+
+Create ImagePreview Composable:
+
+Show thumbnail of selected image
+Option to view full screen
+Remove image button
+
+
+
+Deliverable: Working camera/gallery picker with image preview
+
+Part 3: Location Services
+Objectives:
+
+Get approximate location using Network Provider
+Display location on map (optional)
+Reverse geocoding for address
+
+Requirements:
+kotlin// AndroidManifest.xml permissions
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.INTERNET" />
+Steps:
+
+Create LocationRepository (domain/repository/LocationRepository.kt):
+
+kotlinclass LocationRepository(private val context: Context) {
+    private val fusedLocationClient: FusedLocationProviderClient =
+        LocationServices.getFusedLocationProviderClient(context)
+
+    suspend fun getCurrentLocation(): Result<Location>
+    suspend fun getAddressFromLocation(lat: Double, lng: Double): String
+}
+
+Update ViewModel:
+
+Add location fetching function
+Handle location permissions
+Update UI state with location
+
+
+Update ReportIssueScreen.kt:
+
+Add location permission request
+Add "Get Current Location" button
+Display location details (lat/lng, address)
+Add loading indicator for location fetch
+
+
+Create LocationCard Composable:
+
+Show location icon
+Display coordinates and address
+Refresh location option
+
+
+
+Deliverable: Working location detection with address display
+
+Part 4: Firebase Realtime Database Integration
+Objectives:
+
+Setup Firebase Realtime Database structure
+Implement repository for CRUD operations
+Save report data (without image URL initially)
+
+Requirements:
+json// Firebase Realtime Database Structure
+{
+  "reports": {
+    "userId_timestamp": {
+      "id": "unique_id",
+      "userId": "firebase_user_id",
+      "imageUrl": "placeholder",
+      "description": "Issue description",
+      "issueType": "POTHOLE",
+      "location": {
+        "latitude": 28.6139,
+        "longitude": 77.2090,
+        "address": "New Delhi, India"
+      },
+      "status": "PENDING",
+      "timestamp": 1234567890
+    }
+  }
+}
+Steps:
+
+Setup Firebase Console:
+
+Create Realtime Database
+Set security rules (authenticated users only)
+Enable read/write for authenticated users
+
+
+Create ReportRepository (domain/repository/ReportRepository.kt):
+
+kotlinclass ReportRepository {
+    private val database = FirebaseDatabase.getInstance()
+    private val reportsRef = database.getReference("reports")
+
+    suspend fun createReport(report: IssueReport): Flow<Result<String>>
+    suspend fun updateReport(reportId: String, report: IssueReport): Flow<Result<Boolean>>
+    suspend fun getReportsByUserId(userId: String): Flow<List<IssueReport>>
+}
+
+Update ViewModel:
+
+Add function to create report
+Handle loading states
+Error handling for database operations
+
+
+Update UI:
+
+Connect submit button to ViewModel
+Show success/error messages
+Add validation before submission
+
+
+
+Deliverable: Reports saved to Firebase (with placeholder image URL)
+
+Part 5: Supabase Image Upload
+Objectives:
+
+Integrate Supabase storage
+Upload captured image to Supabase
+Get public URL and update Firebase report
+
+Requirements:
+gradle// Supabase dependencies
+implementation("io.github.jan-tennert.supabase:postgrest-kt:2.0.0")
+implementation("io.github.jan-tennert.supabase:storage-kt:2.0.0")
+implementation("io.ktor:ktor-client-android:2.3.7")
+Supabase Setup:
+
+Create Supabase project at supabase.com
+Create storage bucket named "issue-images"
+Set bucket to public
+Get API URL and anon key
+
+Steps:
+
+Create SupabaseClient (data/remote/SupabaseClient.kt):
+
+kotlinobject SupabaseClient {
+    val client = createSupabaseClient(
+        supabaseUrl = "YOUR_SUPABASE_URL",
+        supabaseKey = "YOUR_ANON_KEY"
+    ) {
+        install(Storage)
+    }
+}
+
+Create ImageUploadRepository (domain/repository/ImageUploadRepository.kt):
+
+kotlinclass ImageUploadRepository {
+    suspend fun uploadImage(
+        imageUri: Uri,
+        fileName: String
+    ): Flow<Result<String>> // Returns public URL
+}
+
+Update ViewModel:
+
+Upload image first before saving report
+Update report with image URL
+Handle upload progress
+Implement retry mechanism
+
+
+Update UI:
+
+Show upload progress indicator
+Display upload percentage
+Handle upload errors with retry option
+
+
+
+Deliverable: Complete image upload to Supabase with URL stored in Firebase
+
+Part 6: Form Validation & Final Polish
+Objectives:
+
+Comprehensive form validation
+Update existing reports
+Error handling & user feedback
+Final UI/UX improvements
+
+Steps:
+
+Create ValidationHelper (utils/ValidationHelper.kt):
+
+kotlinobject ValidationHelper {
+    fun validateReport(
+        imageUri: Uri?,
+        description: String,
+        location: Location?
+    ): ValidationResult
+
+    data class ValidationResult(
+        val isValid: Boolean,
+        val errors: List<String>
+    )
+}
+```
+
+2. **Implement Update Functionality**:
+   - Add edit mode to screen
+   - Pre-populate form with existing data
+   - Allow image replacement
+   - Update Firebase record
+
+3. **Enhanced Error Handling**:
+   - Network error handling
+   - Firebase error messages
+   - Image upload failures
+   - Location service errors
+
+4. **UI/UX Improvements**:
+   - Add loading shimmer effects
+   - Implement snackbar notifications
+   - Add confirmation dialogs
+   - Improve accessibility (content descriptions)
+   - Add pull-to-refresh (if showing existing report)
+
+5. **Create Components**:
+   - `IssueTypeSelector.kt` (chips or dropdown)
+   - `ImageActionSheet.kt` (camera/gallery options)
+   - `LoadingOverlay.kt` (transparent loading screen)
+
+6. **Testing**:
+   - Test all validation scenarios
+   - Test offline behavior
+   - Test with different image sizes
+   - Test location permissions denied
+
+**Deliverable**: Production-ready Report Issue Screen
+
+---
+
+## **Additional Files to Create**
+
+Throughout the 6 parts, you'll create:
+```
+app/src/main/java/uk/ac/tees/mad/fixit/
+├── data/
+│   ├── model/
+│   │   ├── IssueReport.kt (Part 1)
+│   │   └── Result.kt (Part 4)
+│   └── remote/
+│       └── SupabaseClient.kt (Part 5)
+├── domain/
+│   └── repository/
+│       ├── ReportRepository.kt (Part 4)
+│       ├── LocationRepository.kt (Part 3)
+│       └── ImageUploadRepository.kt (Part 5)
+├── presentation/
+│   └── feature/
+│       └── reportissue/
+│           ├── ReportIssueScreen.kt (Update throughout)
+│           ├── ReportIssueViewModel.kt (Create in Part 1)
+│           ├── ReportIssueUiState.kt (Part 1)
+│           ├── ImagePickerHandler.kt (Part 2)
+│           ├── components/
+│           │   ├── ImagePreview.kt (Part 2)
+│           │   ├── LocationCard.kt (Part 3)
+│           │   ├── IssueTypeSelector.kt (Part 6)
+│           │   └── LoadingOverlay.kt (Part 6)
+└── utils/
+    └── ValidationHelper.kt (Part 6)
+
+Testing Checklist (After Each Part)
+
+ Part 1: UI renders correctly, no crashes
+ Part 2: Camera/gallery works, image displays
+ Part 3: Location fetched successfully
+ Part 4: Data saved to Firebase
+ Part 5: Image uploaded to Supabase
+ Part 6: All validations work, update functionality works
+
+
+Notes:
+
+Open311 API integration can be added as Part 7 (bonus) after core functionality is complete
+Keep AuthRepository dependency injection consistent with existing code
+Use existing navigation structure
+Match existing app theme and design patterns
+Test on both Android 13+ (new permissions) and older versions
+
+This plan ensures incremental, testable progress with clear deliverables at each stage!
