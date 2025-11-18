@@ -1,5 +1,9 @@
 package uk.ac.tees.mad.fixit.presentation.feature.reportissue
 
+import android.Manifest
+import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -20,6 +24,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import uk.ac.tees.mad.fixit.data.model.IssueType
@@ -33,6 +38,11 @@ fun ReportIssueScreen(
     val scrollState = rememberScrollState()
     val context = LocalContext.current
 
+    // Initialize location repository
+    LaunchedEffect(Unit) {
+        viewModel.initializeLocationRepository(context)
+    }
+
     // Create image picker handler
     val imagePickerHandler = remember {
         ImagePickerHandler(context) { uri ->
@@ -41,6 +51,23 @@ fun ReportIssueScreen(
     }
 
     val imagePickerLaunchers = imagePickerHandler.createImagePickerLaunchers()
+
+    // Location permission launcher
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+        onResult = { permissions ->
+            val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+            val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+
+            if (fineLocationGranted || coarseLocationGranted) {
+                // Permission granted, fetch location
+                viewModel.fetchCurrentLocation()
+            } else {
+                // Permission denied
+                viewModel.updateLocationError("Location permission denied")
+            }
+        }
+    )
 
     Scaffold(
         topBar = {
@@ -93,11 +120,19 @@ fun ReportIssueScreen(
                     onIssueTypeSelected = viewModel::updateIssueType
                 )
 
-                // Location Section (Placeholder)
+                // Location Section
                 LocationSection(
                     location = uiState.location,
                     locationError = uiState.locationError,
-                    onLocationFetch = { /* TODO: Implement in Part 3 */ }
+                    isLoading = uiState.isLoading,
+                    onLocationFetch = {
+                        // Check permissions before fetching location
+                        checkLocationPermissions(
+                            context = context,
+                            permissionLauncher = locationPermissionLauncher,
+                            onPermissionGranted = { viewModel.fetchCurrentLocation() }
+                        )
+                    }
                 )
 
                 // Submit Button
@@ -121,6 +156,165 @@ fun ReportIssueScreen(
             }
         }
     }
+}
+
+/**
+ * Check location permissions and request if needed
+ */
+private fun checkLocationPermissions(
+    context: Context,
+    permissionLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
+    onPermissionGranted: () -> Unit
+) {
+    val fineLocationPermission = Manifest.permission.ACCESS_FINE_LOCATION
+    val coarseLocationPermission = Manifest.permission.ACCESS_COARSE_LOCATION
+
+    val fineLocationGranted = ContextCompat.checkSelfPermission(
+        context,
+        fineLocationPermission
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    val coarseLocationGranted = ContextCompat.checkSelfPermission(
+        context,
+        coarseLocationPermission
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    if (fineLocationGranted || coarseLocationGranted) {
+        // Permission already granted
+        onPermissionGranted()
+    } else {
+        // Request permission
+        permissionLauncher.launch(
+            arrayOf(fineLocationPermission, coarseLocationPermission)
+        )
+    }
+}
+
+// ImagePickerSection, DescriptionSection, and IssueTypeSection remain the same as in Part 2
+// ... (keep the existing implementations)
+
+@Composable
+private fun LocationSection(
+    location: uk.ac.tees.mad.fixit.data.model.IssueLocation?,
+    locationError: String?,
+    isLoading: Boolean,
+    onLocationFetch: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = "Location",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Location",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "*",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+
+            if (location != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = location.address.ifEmpty { "Address not available" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "Lat: ${String.format("%.6f", location.latitude)}, " +
+                                "Lng: ${String.format("%.6f", location.longitude)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Location not set",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (locationError != null) {
+                Text(
+                    text = locationError,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            Button(
+                onClick = onLocationFetch,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Getting Location...")
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Get Current Location")
+                }
+            }
+
+            Text(
+                text = "Note: Location is required for issue reporting",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+// SubmitButton, ErrorCard, LoadingOverlay, and getIconForIssueType remain the same
+// ... (keep the existing implementations)
+
+// Add this extension function to ViewModel for location error
+private fun ReportIssueViewModel.updateLocationError(message: String) {
+    // You can add this function to your ViewModel or handle it in the existing state updates
 }
 
 @Composable
@@ -425,104 +619,6 @@ private fun IssueTypeSection(
     }
 }
 
-@Composable
-private fun LocationSection(
-    location: uk.ac.tees.mad.fixit.data.model.IssueLocation?,
-    locationError: String?,
-    onLocationFetch: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = "Location",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "Location",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            if (location != null) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = location.address.ifEmpty { "Address not available" },
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "Lat: ${String.format("%.6f", location.latitude)}, " +
-                                "Lng: ${String.format("%.6f", location.longitude)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    )
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Location not set",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            if (locationError != null) {
-                Text(
-                    text = locationError,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-
-            OutlinedButton(
-                onClick = onLocationFetch,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Get Current Location")
-            }
-
-            Text(
-                text = "Note: Location will be implemented in Part 3",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-    }
-}
 
 @Composable
 private fun SubmitButton(

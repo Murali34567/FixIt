@@ -59,8 +59,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.firebase.auth)
-    implementation(libs.firebase.database)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -89,10 +87,24 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
+    // Firebase
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.database)
+
     // Activity Compose for permission handling
-    implementation("androidx.activity:activity-compose:1.8.2")
+    implementation(libs.androidx.activity.compose)
 
     // Coil for image loading
-    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation(libs.coil.compose)
+
+
+    // Location services
+    implementation(libs.play.services.location)
+
+    // For geocoding (address lookup)
+    implementation(libs.androidx.appcompat)
+
+     // For coroutines with Firebase
+    implementation(libs.kotlinx.coroutines.play.services)
 }
 

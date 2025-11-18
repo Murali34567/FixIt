@@ -1,17 +1,31 @@
 package uk.ac.tees.mad.fixit.presentation.feature.reportissue
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import uk.ac.tees.mad.fixit.data.model.IssueLocation
 import uk.ac.tees.mad.fixit.data.model.IssueType
+import uk.ac.tees.mad.fixit.domain.repository.LocationRepository
 
 class ReportIssueViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReportIssueUiState())
     val uiState: StateFlow<ReportIssueUiState> = _uiState.asStateFlow()
+
+    private lateinit var locationRepository: LocationRepository
+
+    /**
+     * Initialize location repository (should be called from the screen)
+     */
+    fun initializeLocationRepository(context: Context) {
+        locationRepository = LocationRepository(context)
+    }
 
     /**
      * Update the selected image URI
@@ -21,7 +35,7 @@ class ReportIssueViewModel : ViewModel() {
             it.copy(
                 imageUri = uri,
                 imageError = null,
-                errorMessage = null // Clear general error when image is updated
+                errorMessage = null
             )
         }
     }
@@ -34,7 +48,7 @@ class ReportIssueViewModel : ViewModel() {
             it.copy(
                 imageUri = null,
                 imageError = null,
-                errorMessage = null // Clear general error when image is removed
+                errorMessage = null
             )
         }
     }
@@ -47,7 +61,7 @@ class ReportIssueViewModel : ViewModel() {
             it.copy(
                 description = description,
                 descriptionError = null,
-                errorMessage = null // Clear general error when description is updated
+                errorMessage = null
             )
         }
     }
@@ -59,15 +73,88 @@ class ReportIssueViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 selectedIssueType = issueType,
-                errorMessage = null // Clear general error when issue type is updated
+                errorMessage = null
             )
         }
     }
 
     /**
-     * Clear error message - kept for future use
+     * Fetch current location
      */
-    @Suppress("unused") // Will be used in future parts
+    fun fetchCurrentLocation() {
+        if (!this::locationRepository.isInitialized) {
+            _uiState.update {
+                it.copy(
+                    errorMessage = "Location services not initialized",
+                    locationError = "Please try again"
+                )
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                isLoading = true,
+                locationError = null,
+                errorMessage = null
+            )
+        }
+
+        viewModelScope.launch {
+            val result = locationRepository.getCurrentLocation()
+
+            _uiState.update { state ->
+                state.copy(isLoading = false)
+            }
+
+            result.fold(
+                onSuccess = { location ->
+                    _uiState.update {
+                        it.copy(
+                            location = location,
+                            locationError = null
+                        )
+                    }
+                },
+                onFailure = { exception ->
+                    _uiState.update {
+                        it.copy(
+                            locationError = "Failed to get location: ${exception.message}",
+                            errorMessage = "Location service unavailable"
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    /**
+     * Update location manually (for testing or future map integration)
+     */
+    fun updateLocation(location: IssueLocation) {
+        _uiState.update {
+            it.copy(
+                location = location,
+                locationError = null
+            )
+        }
+    }
+
+    /**
+     * Clear location
+     */
+    fun clearLocation() {
+        _uiState.update {
+            it.copy(
+                location = null,
+                locationError = null
+            )
+        }
+    }
+
+    /**
+     * Clear error message
+     */
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
     }
@@ -94,6 +181,12 @@ class ReportIssueViewModel : ViewModel() {
             isValid = false
         }
 
+        // Validate location
+        if (state.location == null) {
+            _uiState.update { it.copy(locationError = "Please get your current location") }
+            isValid = false
+        }
+
         return isValid
     }
 
@@ -115,18 +208,30 @@ class ReportIssueViewModel : ViewModel() {
         }
 
         // Simulate submission
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(2000) // Simulate network delay
+
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    errorMessage = "Submission functionality will be implemented in later parts"
+                )
+            }
+        }
+    }
+
+    private fun ReportIssueViewModel.updateLocationError(message: String) {
         _uiState.update {
             it.copy(
-                isLoading = false,
-                errorMessage = "Submission functionality will be implemented in later parts"
+                locationError = message,
+                errorMessage = "Location error: $message"
             )
         }
     }
 
     /**
-     * Reset the form - kept for future use (e.g., after successful submission)
+     * Reset the form
      */
-    @Suppress("unused") // Will be used in Parts 4-6
     fun resetForm() {
         _uiState.value = ReportIssueUiState()
     }
