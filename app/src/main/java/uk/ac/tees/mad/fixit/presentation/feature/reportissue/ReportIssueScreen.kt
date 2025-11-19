@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import uk.ac.tees.mad.fixit.data.model.IssueType
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,9 +39,22 @@ fun ReportIssueScreen(
     val scrollState = rememberScrollState()
     val context = LocalContext.current
 
-    // Initialize location repository
+    // Initialize repositories
     LaunchedEffect(Unit) {
-        viewModel.initializeLocationRepository(context)
+        viewModel.initializeRepositories(context)
+    }
+
+    // Handle successful submission
+    var showSuccess by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.isSubmitted) {
+        if (uiState.isSubmitted) {
+            showSuccess = true
+            // Reset form after delay
+            delay(2000) // Show success for 2 seconds
+            viewModel.resetForm()
+            showSuccess = false
+        }
     }
 
     // Create image picker handler
@@ -60,11 +74,9 @@ fun ReportIssueScreen(
             val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
 
             if (fineLocationGranted || coarseLocationGranted) {
-                // Permission granted, fetch location
                 viewModel.fetchCurrentLocation()
             } else {
-                // Permission denied
-                viewModel.updateLocationError("Location permission denied")
+                // Handle permission denied
             }
         }
     )
@@ -98,6 +110,11 @@ fun ReportIssueScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
+                // Success Message
+                if (showSuccess) {
+                    SuccessCard(message = "Report submitted successfully!")
+                }
+
                 // Image Section
                 ImagePickerSection(
                     imageUri = uiState.imageUri,
@@ -126,7 +143,6 @@ fun ReportIssueScreen(
                     locationError = uiState.locationError,
                     isLoading = uiState.isLoading,
                     onLocationFetch = {
-                        // Check permissions before fetching location
                         checkLocationPermissions(
                             context = context,
                             permissionLauncher = locationPermissionLauncher,
@@ -154,6 +170,34 @@ fun ReportIssueScreen(
             if (uiState.isLoading) {
                 LoadingOverlay()
             }
+        }
+    }
+}
+
+// Add SuccessCard composable
+@Composable
+private fun SuccessCard(message: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
         }
     }
 }

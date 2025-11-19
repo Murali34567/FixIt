@@ -10,8 +10,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import uk.ac.tees.mad.fixit.data.model.IssueLocation
+import uk.ac.tees.mad.fixit.data.model.IssueReport
 import uk.ac.tees.mad.fixit.data.model.IssueType
+import uk.ac.tees.mad.fixit.data.model.Result
 import uk.ac.tees.mad.fixit.domain.repository.LocationRepository
+import uk.ac.tees.mad.fixit.domain.repository.ReportRepository
 
 class ReportIssueViewModel : ViewModel() {
 
@@ -19,12 +22,14 @@ class ReportIssueViewModel : ViewModel() {
     val uiState: StateFlow<ReportIssueUiState> = _uiState.asStateFlow()
 
     private lateinit var locationRepository: LocationRepository
+    private lateinit var reportRepository: ReportRepository
 
     /**
-     * Initialize location repository (should be called from the screen)
+     * Initialize repositories (should be called from the screen)
      */
-    fun initializeLocationRepository(context: Context) {
+    fun initializeRepositories(context: Context) {
         locationRepository = LocationRepository(context)
+        reportRepository = ReportRepository()
     }
 
     /**
@@ -191,7 +196,7 @@ class ReportIssueViewModel : ViewModel() {
     }
 
     /**
-     * Submit the report (placeholder for now)
+     * Submit the report to Firebase
      */
     fun submitReport() {
         if (!validateForm()) {
@@ -199,38 +204,75 @@ class ReportIssueViewModel : ViewModel() {
             return
         }
 
-        // TODO: Implement actual submission in later parts
+        if (!this::reportRepository.isInitialized) {
+            _uiState.update {
+                it.copy(
+                    errorMessage = "Report service not initialized",
+                    isLoading = false
+                )
+            }
+            return
+        }
+
         _uiState.update {
             it.copy(
                 isLoading = true,
-                errorMessage = null
+                errorMessage = null,
+                isSubmitted = false
             )
         }
 
-        // Simulate submission
         viewModelScope.launch {
-            kotlinx.coroutines.delay(2000) // Simulate network delay
-
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    errorMessage = "Submission functionality will be implemented in later parts"
+            try {
+                // Create report object (with placeholder image URL for now)
+                val report = IssueReport(
+                    imageUrl = "placeholder", // Will be updated in Part 5 with actual image URL
+                    description = _uiState.value.description,
+                    issueType = _uiState.value.selectedIssueType,
+                    location = _uiState.value.location ?: IssueLocation(),
+                    timestamp = System.currentTimeMillis()
                 )
+
+                // Submit to Firebase
+                reportRepository.createReport(report).collect { result ->
+                    when (result) {
+                        is Result.Loading -> {
+                            // Loading state already set
+                        }
+                        is Result.Success -> {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    isSubmitted = true,
+                                    errorMessage = null
+                                )
+                            }
+                        }
+                        is Result.Error -> {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    errorMessage = "Failed to submit report: ${result.message}",
+                                    isSubmitted = false
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (exception: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "Submission failed: ${exception.message}",
+                        isSubmitted = false
+                    )
+                }
             }
         }
     }
 
-    private fun ReportIssueViewModel.updateLocationError(message: String) {
-        _uiState.update {
-            it.copy(
-                locationError = message,
-                errorMessage = "Location error: $message"
-            )
-        }
-    }
-
     /**
-     * Reset the form
+     * Reset the form after successful submission
      */
     fun resetForm() {
         _uiState.value = ReportIssueUiState()
