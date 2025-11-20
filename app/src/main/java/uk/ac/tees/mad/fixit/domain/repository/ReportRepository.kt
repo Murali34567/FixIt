@@ -1,5 +1,6 @@
 package uk.ac.tees.mad.fixit.domain.repository
 
+import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
@@ -21,11 +22,21 @@ import java.util.UUID
 
 class ReportRepository {
 
-    private val database: FirebaseDatabase = Firebase.database
+    private val database: FirebaseDatabase = Firebase.database("https://fixit-7531c-default-rtdb.asia-southeast1.firebasedatabase.app/")
     private val auth: FirebaseAuth = Firebase.auth
 
+    private companion object {
+        const val TAG = "ReportRepository"
+    }
+
     private fun getCurrentUserId(): String {
-        return auth.currentUser?.uid ?: throw Exception("User not authenticated")
+        val currentUser = auth.currentUser
+        if (currentUser == null) {
+            Log.e(TAG, "No authenticated user found")
+            throw Exception("User not authenticated. Please sign in first.")
+        }
+        Log.d(TAG, "User ID: ${currentUser.uid}")
+        return currentUser.uid
     }
 
     private fun getReportsRef() = database.getReference("reports")
@@ -35,6 +46,8 @@ class ReportRepository {
      * Create a new issue report
      */
     suspend fun createReport(report: IssueReport): Flow<Result<String>> = callbackFlow {
+        Log.d(TAG, "Starting report creation...")
+
         try {
             val userId = getCurrentUserId()
 
@@ -45,27 +58,53 @@ class ReportRepository {
                 userId = userId
             )
 
+            Log.d(TAG, "Report data: $reportWithId")
+            Log.d(TAG, "Report map: ${reportWithId.toMap()}")
+
             // Send loading state
             trySend(Result.Loading)
 
-            // Save to Firebase
-            getUserReportsRef(userId).child(reportId).setValue(reportWithId.toMap())
-                .addOnSuccessListener {
+            Log.d(TAG, "Attempting to save to Firebase...")
+
+            // Save to Firebase with timeout
+            val task = getUserReportsRef(userId).child(reportId).setValue(reportWithId.toMap())
+
+            // Add completion listener with timeout
+            task.addOnCompleteListener { taskResult ->
+                if (taskResult.isSuccessful) {
+                    Log.d(TAG, "✅ Report saved successfully with ID: $reportId")
                     trySend(Result.Success(reportId))
-                    close()
+                } else {
+                    val errorMsg = taskResult.exception?.message ?: "Unknown error"
+                    Log.e(TAG, "❌ Failed to save report: $errorMsg")
+                    trySend(Result.Error("Failed to create report: $errorMsg", taskResult.exception))
                 }
-                .addOnFailureListener { exception ->
-                    trySend(Result.Error("Failed to create report: ${exception.message}", exception))
-                    close()
-                }
-                .await()
+                close()
+            }
+
+            // Also add failure listener as backup
+            task.addOnFailureListener { exception ->
+                Log.e(TAG, "❌ Firebase setValue failed: ${exception.message}")
+                trySend(Result.Error("Firebase error: ${exception.message}", exception))
+                close()
+            }
+
+            // Add cancellation listener
+            task.addOnCanceledListener {
+                Log.e(TAG, "❌ Firebase operation cancelled")
+                trySend(Result.Error("Operation cancelled"))
+                close()
+            }
 
         } catch (exception: Exception) {
+            Log.e(TAG, "❌ Exception in createReport: ${exception.message}", exception)
             trySend(Result.Error("Failed to create report: ${exception.message}", exception))
             close()
         }
 
-        awaitClose { }
+        awaitClose {
+            Log.d(TAG, "Flow closed")
+        }
     }
 
     /**
@@ -220,4 +259,19 @@ class ReportRepository {
             timestamp = (map["timestamp"] as? Long) ?: System.currentTimeMillis()
         )
     }
+
+    // Temporary test function in ReportRepository
+    suspend fun testFirebaseConnection(): Boolean {
+        return try {
+            Log.d(TAG, "Testing Firebase connection...")
+            val testRef = database.getReference("connection_test")
+            testRef.setValue("test_${System.currentTimeMillis()}").await()
+            Log.d(TAG, "✅ Firebase connection test PASSED")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Firebase connection test FAILED: ${e.message}")
+            false
+        }
+    }
 }
+

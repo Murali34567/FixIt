@@ -106,5 +106,13 @@ dependencies {
 
      // For coroutines with Firebase
     implementation(libs.kotlinx.coroutines.play.services)
+
+    // Supabase
+    implementation("io.github.jan-tennert.supabase:storage-kt:2.0.0")
+    implementation("io.github.jan-tennert.supabase:postgrest-kt:2.0.0")
+    implementation("io.ktor:ktor-client-android:2.3.7")
+
+    // For file operations
+    implementation("commons-io:commons-io:2.11.0")
 }
 

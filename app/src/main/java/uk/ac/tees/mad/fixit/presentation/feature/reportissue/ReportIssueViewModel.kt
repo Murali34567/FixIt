@@ -2,13 +2,16 @@ package uk.ac.tees.mad.fixit.presentation.feature.reportissue
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uk.ac.tees.mad.fixit.data.model.IssueLocation
 import uk.ac.tees.mad.fixit.data.model.IssueReport
 import uk.ac.tees.mad.fixit.data.model.IssueType
@@ -24,13 +27,31 @@ class ReportIssueViewModel : ViewModel() {
     private lateinit var locationRepository: LocationRepository
     private lateinit var reportRepository: ReportRepository
 
+    private companion object {
+        const val TAG = "ReportIssueViewModel"
+    }
+
     /**
      * Initialize repositories (should be called from the screen)
      */
+//    fun initializeRepositories(context: Context) {
+//        locationRepository = LocationRepository(context)
+//        reportRepository = ReportRepository()
+//    }
+
     fun initializeRepositories(context: Context) {
         locationRepository = LocationRepository(context)
         reportRepository = ReportRepository()
+
+        viewModelScope.launch {
+            val isConnected = reportRepository.testFirebaseConnection()
+            if (!isConnected) {
+                Log.e(TAG, "Cannot proceed - Firebase connection failed")
+            }
+        }
     }
+
+
 
     /**
      * Update the selected image URI
@@ -199,12 +220,16 @@ class ReportIssueViewModel : ViewModel() {
      * Submit the report to Firebase
      */
     fun submitReport() {
+        Log.d(TAG, "submitReport called")
+
         if (!validateForm()) {
+            Log.d(TAG, "Form validation failed")
             _uiState.update { it.copy(errorMessage = "Please fix the errors before submitting") }
             return
         }
 
         if (!this::reportRepository.isInitialized) {
+            Log.e(TAG, "ReportRepository not initialized")
             _uiState.update {
                 it.copy(
                     errorMessage = "Report service not initialized",
@@ -224,6 +249,8 @@ class ReportIssueViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
+                Log.d(TAG, "Creating report object...")
+
                 // Create report object (with placeholder image URL for now)
                 val report = IssueReport(
                     imageUrl = "placeholder", // Will be updated in Part 5 with actual image URL
@@ -233,33 +260,54 @@ class ReportIssueViewModel : ViewModel() {
                     timestamp = System.currentTimeMillis()
                 )
 
-                // Submit to Firebase
-                reportRepository.createReport(report).collect { result ->
-                    when (result) {
-                        is Result.Loading -> {
-                            // Loading state already set
-                        }
-                        is Result.Success -> {
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    isSubmitted = true,
-                                    errorMessage = null
-                                )
-                            }
-                        }
-                        is Result.Error -> {
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    errorMessage = "Failed to submit report: ${result.message}",
-                                    isSubmitted = false
-                                )
+                Log.d(TAG, "Report created: $report")
+
+                // Submit to Firebase with timeout
+                try {
+                    withTimeout(30000) { // 30 second timeout
+                        reportRepository.createReport(report).collect { result ->
+                            Log.d(TAG, "Repository result: $result")
+                            when (result) {
+                                is Result.Loading -> {
+                                    Log.d(TAG, "Still loading...")
+                                    // Loading state already set
+                                }
+                                is Result.Success -> {
+                                    Log.d(TAG, "✅ Report submission successful!")
+                                    _uiState.update {
+                                        it.copy(
+                                            isLoading = false,
+                                            isSubmitted = true,
+                                            errorMessage = null
+                                        )
+                                    }
+                                }
+                                is Result.Error -> {
+                                    Log.e(TAG, "❌ Report submission failed: ${result.message}")
+                                    _uiState.update {
+                                        it.copy(
+                                            isLoading = false,
+                                            errorMessage = "Failed to submit report: ${result.message}",
+                                            isSubmitted = false
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
+                } catch (timeoutException: TimeoutCancellationException) {
+                    Log.e(TAG, "❌ Report submission timed out")
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "Submission timed out. Please check your internet connection.",
+                            isSubmitted = false
+                        )
+                    }
                 }
+
             } catch (exception: Exception) {
+                Log.e(TAG, "❌ Exception in submitReport: ${exception.message}", exception)
                 _uiState.update {
                     it.copy(
                         isLoading = false,
