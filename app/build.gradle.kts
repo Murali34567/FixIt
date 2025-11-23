@@ -108,11 +108,12 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
 
     // Supabase
-    implementation("io.github.jan-tennert.supabase:storage-kt:2.0.0")
-    implementation("io.github.jan-tennert.supabase:postgrest-kt:2.0.0")
-    implementation("io.ktor:ktor-client-android:2.3.7")
+    implementation(libs.storage.kt)
+    implementation(libs.postgrest.kt)
+    implementation(libs.gotrue.kt)
+    implementation(libs.ktor.client.android)
 
     // For file operations
-    implementation("commons-io:commons-io:2.11.0")
+    implementation(libs.commons.io)
 }
 

@@ -2,20 +2,18 @@ package uk.ac.tees.mad.fixit.presentation.feature.reportissue
 
 import android.content.Context
 import android.net.Uri
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import uk.ac.tees.mad.fixit.data.model.IssueLocation
 import uk.ac.tees.mad.fixit.data.model.IssueReport
 import uk.ac.tees.mad.fixit.data.model.IssueType
 import uk.ac.tees.mad.fixit.data.model.Result
+import uk.ac.tees.mad.fixit.domain.repository.ImageUploadRepository
 import uk.ac.tees.mad.fixit.domain.repository.LocationRepository
 import uk.ac.tees.mad.fixit.domain.repository.ReportRepository
 
@@ -26,6 +24,11 @@ class ReportIssueViewModel : ViewModel() {
 
     private lateinit var locationRepository: LocationRepository
     private lateinit var reportRepository: ReportRepository
+    private lateinit var imageUploadRepository: ImageUploadRepository
+
+    // Add upload progress state
+    private val _uploadProgress = MutableStateFlow(0f)
+    val uploadProgress: StateFlow<Float> = _uploadProgress.asStateFlow()
 
     private companion object {
         const val TAG = "ReportIssueViewModel"
@@ -34,24 +37,11 @@ class ReportIssueViewModel : ViewModel() {
     /**
      * Initialize repositories (should be called from the screen)
      */
-//    fun initializeRepositories(context: Context) {
-//        locationRepository = LocationRepository(context)
-//        reportRepository = ReportRepository()
-//    }
-
     fun initializeRepositories(context: Context) {
         locationRepository = LocationRepository(context)
         reportRepository = ReportRepository()
-
-        viewModelScope.launch {
-            val isConnected = reportRepository.testFirebaseConnection()
-            if (!isConnected) {
-                Log.e(TAG, "Cannot proceed - Firebase connection failed")
-            }
-        }
+        imageUploadRepository = ImageUploadRepository(context)
     }
-
-
 
     /**
      * Update the selected image URI
@@ -155,34 +145,33 @@ class ReportIssueViewModel : ViewModel() {
     }
 
     /**
-     * Update location manually (for testing or future map integration)
+     * Upload image to Supabase and return URL
      */
-    fun updateLocation(location: IssueLocation) {
-        _uiState.update {
-            it.copy(
-                location = location,
-                locationError = null
-            )
-        }
-    }
+    private suspend fun uploadImageToSupabase(imageUri: Uri): Result<String> {
+        return try {
+            var imageUrlResult: Result<String> = Result.Error("Upload failed")
 
-    /**
-     * Clear location
-     */
-    fun clearLocation() {
-        _uiState.update {
-            it.copy(
-                location = null,
-                locationError = null
-            )
-        }
-    }
+            imageUploadRepository.uploadImage(imageUri).collect { result ->
+                when (result) {
+                    is Result.Loading -> {
+                        // Update progress if needed
+                        _uploadProgress.value = 0.5f // Simulate progress
+                    }
+                    is Result.Success -> {
+                        imageUrlResult = Result.Success(result.data)
+                        _uploadProgress.value = 1.0f
+                    }
+                    is Result.Error -> {
+                        imageUrlResult = result
+                        _uploadProgress.value = 0f
+                    }
+                }
+            }
 
-    /**
-     * Clear error message
-     */
-    fun clearError() {
-        _uiState.update { it.copy(errorMessage = null) }
+            imageUrlResult
+        } catch (exception: Exception) {
+            Result.Error("Image upload failed: ${exception.message}", exception)
+        }
     }
 
     /**
@@ -217,22 +206,18 @@ class ReportIssueViewModel : ViewModel() {
     }
 
     /**
-     * Submit the report to Firebase
+     * Submit the report with image upload
      */
     fun submitReport() {
-        Log.d(TAG, "submitReport called")
-
         if (!validateForm()) {
-            Log.d(TAG, "Form validation failed")
             _uiState.update { it.copy(errorMessage = "Please fix the errors before submitting") }
             return
         }
 
-        if (!this::reportRepository.isInitialized) {
-            Log.e(TAG, "ReportRepository not initialized")
+        if (!this::reportRepository.isInitialized || !this::imageUploadRepository.isInitialized) {
             _uiState.update {
                 it.copy(
-                    errorMessage = "Report service not initialized",
+                    errorMessage = "Services not initialized",
                     isLoading = false
                 )
             }
@@ -247,67 +232,81 @@ class ReportIssueViewModel : ViewModel() {
             )
         }
 
+        _uploadProgress.value = 0f
+
         viewModelScope.launch {
             try {
-                Log.d(TAG, "Creating report object...")
+                val imageUri = _uiState.value.imageUri
+                if (imageUri == null) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "No image selected",
+                            isSubmitted = false
+                        )
+                    }
+                    return@launch
+                }
 
-                // Create report object (with placeholder image URL for now)
+                // Step 1: Upload image to Supabase
+                _uploadProgress.value = 0.3f
+                val imageUploadResult = uploadImageToSupabase(imageUri)
+
+                if (imageUploadResult is Result.Error) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "Failed to upload image: ${imageUploadResult.message}",
+                            isSubmitted = false
+                        )
+                    }
+                    _uploadProgress.value = 0f
+                    return@launch
+                }
+
+                // Step 2: Create report with actual image URL
+                _uploadProgress.value = 0.6f
+                val imageUrl = (imageUploadResult as Result.Success).data
+
                 val report = IssueReport(
-                    imageUrl = "placeholder", // Will be updated in Part 5 with actual image URL
+                    imageUrl = imageUrl, // Use actual Supabase URL instead of placeholder
                     description = _uiState.value.description,
                     issueType = _uiState.value.selectedIssueType,
                     location = _uiState.value.location ?: IssueLocation(),
                     timestamp = System.currentTimeMillis()
                 )
 
-                Log.d(TAG, "Report created: $report")
-
-                // Submit to Firebase with timeout
-                try {
-                    withTimeout(30000) { // 30 second timeout
-                        reportRepository.createReport(report).collect { result ->
-                            Log.d(TAG, "Repository result: $result")
-                            when (result) {
-                                is Result.Loading -> {
-                                    Log.d(TAG, "Still loading...")
-                                    // Loading state already set
-                                }
-                                is Result.Success -> {
-                                    Log.d(TAG, "✅ Report submission successful!")
-                                    _uiState.update {
-                                        it.copy(
-                                            isLoading = false,
-                                            isSubmitted = true,
-                                            errorMessage = null
-                                        )
-                                    }
-                                }
-                                is Result.Error -> {
-                                    Log.e(TAG, "❌ Report submission failed: ${result.message}")
-                                    _uiState.update {
-                                        it.copy(
-                                            isLoading = false,
-                                            errorMessage = "Failed to submit report: ${result.message}",
-                                            isSubmitted = false
-                                        )
-                                    }
-                                }
-                            }
+                // Step 3: Submit report to Firebase
+                _uploadProgress.value = 0.8f
+                reportRepository.createReport(report).collect { result ->
+                    when (result) {
+                        is Result.Loading -> {
+                            // Loading state already set
                         }
-                    }
-                } catch (timeoutException: TimeoutCancellationException) {
-                    Log.e(TAG, "❌ Report submission timed out")
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = "Submission timed out. Please check your internet connection.",
-                            isSubmitted = false
-                        )
+                        is Result.Success -> {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    isSubmitted = true,
+                                    errorMessage = null
+                                )
+                            }
+                            _uploadProgress.value = 1.0f
+                        }
+                        is Result.Error -> {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    errorMessage = "Failed to submit report: ${result.message}",
+                                    isSubmitted = false
+                                )
+                            }
+                            _uploadProgress.value = 0f
+                        }
                     }
                 }
 
             } catch (exception: Exception) {
-                Log.e(TAG, "❌ Exception in submitReport: ${exception.message}", exception)
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -315,6 +314,7 @@ class ReportIssueViewModel : ViewModel() {
                         isSubmitted = false
                     )
                 }
+                _uploadProgress.value = 0f
             }
         }
     }
@@ -324,5 +324,25 @@ class ReportIssueViewModel : ViewModel() {
      */
     fun resetForm() {
         _uiState.value = ReportIssueUiState()
+        _uploadProgress.value = 0f
+    }
+
+    /**
+     * Clear error message
+     */
+    fun clearError() {
+        _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    /**
+     * Clear location
+     */
+    fun clearLocation() {
+        _uiState.update {
+            it.copy(
+                location = null,
+                locationError = null
+            )
+        }
     }
 }

@@ -36,6 +36,7 @@ fun ReportIssueScreen(
     viewModel: ReportIssueViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val uploadProgress by viewModel.uploadProgress.collectAsState()
     val scrollState = rememberScrollState()
     val context = LocalContext.current
 
@@ -51,7 +52,7 @@ fun ReportIssueScreen(
         if (uiState.isSubmitted) {
             showSuccess = true
             // Reset form after delay
-            delay(2000) // Show success for 2 seconds
+            delay(2000)
             viewModel.resetForm()
             showSuccess = false
         }
@@ -115,6 +116,11 @@ fun ReportIssueScreen(
                     SuccessCard(message = "Report submitted successfully!")
                 }
 
+                // Upload Progress (show only when uploading)
+                if (uiState.isLoading && uploadProgress > 0f) {
+                    UploadProgressSection(progress = uploadProgress)
+                }
+
                 // Image Section
                 ImagePickerSection(
                     imageUri = uiState.imageUri,
@@ -174,7 +180,54 @@ fun ReportIssueScreen(
     }
 }
 
-// Add SuccessCard composable
+// Add Upload Progress Section
+@Composable
+private fun UploadProgressSection(progress: Float) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Email,
+                    contentDescription = "Uploading",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Uploading Image",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+            )
+
+            Text(
+                text = "${(progress * 100).toInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
+    }
+}
+
+// SuccessCard composable (already exists)
 @Composable
 private fun SuccessCard(message: String) {
     Card(
