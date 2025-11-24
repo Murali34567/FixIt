@@ -2,6 +2,10 @@ package uk.ac.tees.mad.fixit.presentation.feature.reportissue
 
 import android.content.Context
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +20,7 @@ import uk.ac.tees.mad.fixit.data.model.Result
 import uk.ac.tees.mad.fixit.domain.repository.ImageUploadRepository
 import uk.ac.tees.mad.fixit.domain.repository.LocationRepository
 import uk.ac.tees.mad.fixit.domain.repository.ReportRepository
+import uk.ac.tees.mad.fixit.domain.util.ValidationHelper
 
 class ReportIssueViewModel : ViewModel() {
 
@@ -50,7 +55,7 @@ class ReportIssueViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 imageUri = uri,
-                imageError = null,
+                imageErrors = emptyList(),
                 errorMessage = null
             )
         }
@@ -63,20 +68,21 @@ class ReportIssueViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 imageUri = null,
-                imageError = null,
+                imageErrors = emptyList(),
                 errorMessage = null
             )
         }
     }
 
     /**
-     * Update the description text
+     * Update the description text with character count
      */
     fun updateDescription(description: String) {
         _uiState.update {
             it.copy(
                 description = description,
-                descriptionError = null,
+                descriptionCharCount = description.length,
+                descriptionErrors = emptyList(),
                 errorMessage = null
             )
         }
@@ -102,7 +108,7 @@ class ReportIssueViewModel : ViewModel() {
             _uiState.update {
                 it.copy(
                     errorMessage = "Location services not initialized",
-                    locationError = "Please try again"
+                    locationErrors = listOf("Please try again")
                 )
             }
             return
@@ -111,7 +117,7 @@ class ReportIssueViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 isLoading = true,
-                locationError = null,
+                locationErrors = emptyList(),
                 errorMessage = null
             )
         }
@@ -128,14 +134,14 @@ class ReportIssueViewModel : ViewModel() {
                     _uiState.update {
                         it.copy(
                             location = location,
-                            locationError = null
+                            locationErrors = emptyList()
                         )
                     }
                 },
                 onFailure = { exception ->
                     _uiState.update {
                         it.copy(
-                            locationError = "Failed to get location: ${exception.message}",
+                            locationErrors = listOf("Failed to get location: ${exception.message}"),
                             errorMessage = "Location service unavailable"
                         )
                     }
@@ -175,49 +181,91 @@ class ReportIssueViewModel : ViewModel() {
     }
 
     /**
-     * Validate form before submission
+     * Enhanced form validation using ValidationHelper
      */
     private fun validateForm(): Boolean {
         val state = _uiState.value
-        var isValid = true
+        val validationResult = ValidationHelper.validateReport(
+            imageUri = state.imageUri,
+            description = state.description,
+            location = state.location
+        )
 
-        // Validate image
-        if (state.imageUri == null) {
-            _uiState.update { it.copy(imageError = "Please capture or select an image") }
-            isValid = false
+        // Clear previous errors
+        _uiState.update {
+            it.copy(
+                descriptionErrors = emptyList(),
+                imageErrors = emptyList(),
+                locationErrors = emptyList(),
+                errorMessage = null
+            )
         }
 
-        // Validate description
-        if (state.description.isBlank()) {
-            _uiState.update { it.copy(descriptionError = "Description is required") }
-            isValid = false
-        } else if (state.description.length < 10) {
-            _uiState.update { it.copy(descriptionError = "Description must be at least 10 characters") }
-            isValid = false
+        if (!validationResult.isValid) {
+            // Group errors by field
+            val descriptionErrors = ValidationHelper.getFieldErrors(validationResult.errors, "description")
+            val imageErrors = ValidationHelper.getFieldErrors(validationResult.errors, "image")
+            val locationErrors = ValidationHelper.getFieldErrors(validationResult.errors, "location")
+
+            _uiState.update {
+                it.copy(
+                    descriptionErrors = descriptionErrors,
+                    imageErrors = imageErrors,
+                    locationErrors = locationErrors,
+                    errorMessage = "Please fix the errors before submitting"
+                )
+            }
+            return false
         }
 
-        // Validate location
-        if (state.location == null) {
-            _uiState.update { it.copy(locationError = "Please get your current location") }
-            isValid = false
-        }
-
-        return isValid
+        return true
     }
 
     /**
-     * Submit the report with image upload
+     * Clear all validation errors
      */
-    fun submitReport() {
+    fun clearAllErrors() {
+        _uiState.update {
+            it.copy(
+                descriptionErrors = emptyList(),
+                imageErrors = emptyList(),
+                locationErrors = emptyList(),
+                errorMessage = null
+            )
+        }
+    }
+
+    /**
+     * Check if network is available
+     */
+    private fun isNetworkAvailable(context: Context): Boolean {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val networkInfo = connectivityManager.activeNetworkInfo
+        return networkInfo != null && networkInfo.isConnected
+    }
+
+    /**
+     * Enhanced submit with better error handling
+     */
+    fun submitReport(context: Context) {
+        // Check network first
+        if (!isNetworkAvailable(context)) {
+            _uiState.update {
+                it.copy(
+                    errorMessage = "No internet connection. Please check your network and try again."
+                )
+            }
+            return
+        }
+
         if (!validateForm()) {
-            _uiState.update { it.copy(errorMessage = "Please fix the errors before submitting") }
             return
         }
 
         if (!this::reportRepository.isInitialized || !this::imageUploadRepository.isInitialized) {
             _uiState.update {
                 it.copy(
-                    errorMessage = "Services not initialized",
+                    errorMessage = "Services not initialized. Please restart the app.",
                     isLoading = false
                 )
             }
@@ -228,7 +276,8 @@ class ReportIssueViewModel : ViewModel() {
             it.copy(
                 isLoading = true,
                 errorMessage = null,
-                isSubmitted = false
+                isSubmitted = false,
+                uploadSuccess = false
             )
         }
 
@@ -269,8 +318,8 @@ class ReportIssueViewModel : ViewModel() {
                 val imageUrl = (imageUploadResult as Result.Success).data
 
                 val report = IssueReport(
-                    imageUrl = imageUrl, // Use actual Supabase URL instead of placeholder
-                    description = _uiState.value.description,
+                    imageUrl = imageUrl,
+                    description = _uiState.value.description.trim(),
                     issueType = _uiState.value.selectedIssueType,
                     location = _uiState.value.location ?: IssueLocation(),
                     timestamp = System.currentTimeMillis()
@@ -288,17 +337,21 @@ class ReportIssueViewModel : ViewModel() {
                                 it.copy(
                                     isLoading = false,
                                     isSubmitted = true,
+                                    uploadSuccess = true,
                                     errorMessage = null
                                 )
                             }
                             _uploadProgress.value = 1.0f
+                            // Perform haptic feedback on success
+                            performHapticFeedback(context)
                         }
                         is Result.Error -> {
                             _uiState.update {
                                 it.copy(
                                     isLoading = false,
                                     errorMessage = "Failed to submit report: ${result.message}",
-                                    isSubmitted = false
+                                    isSubmitted = false,
+                                    uploadSuccess = false
                                 )
                             }
                             _uploadProgress.value = 0f
@@ -311,10 +364,26 @@ class ReportIssueViewModel : ViewModel() {
                     it.copy(
                         isLoading = false,
                         errorMessage = "Submission failed: ${exception.message}",
-                        isSubmitted = false
+                        isSubmitted = false,
+                        uploadSuccess = false
                     )
                 }
                 _uploadProgress.value = 0f
+            }
+        }
+    }
+
+    /**
+     * Perform haptic feedback
+     */
+    private fun performHapticFeedback(context: Context) {
+        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        if (vibrator.hasVibrator()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(50)
             }
         }
     }
@@ -341,7 +410,7 @@ class ReportIssueViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 location = null,
-                locationError = null
+                locationErrors = emptyList()
             )
         }
     }

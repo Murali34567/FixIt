@@ -1,6 +1,7 @@
 package uk.ac.tees.mad.fixit.presentation.feature.reportissue
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -22,7 +23,7 @@ class ImagePickerHandler(
 
     @Composable
     fun createImagePickerLaunchers(): ImagePickerLaunchers {
-        val context = LocalContext.current
+        LocalContext.current
 
         // Camera launcher
         val cameraLauncher = rememberLauncherForActivityResult(
@@ -91,6 +92,7 @@ class ImagePickerHandler(
         cameraLauncher.launch(currentPhotoUri)
     }
 
+    @SuppressLint("SimpleDateFormat")
     private fun createImageFile(): File {
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss").format(Date())
         val storageDir = context.getExternalFilesDir("Pictures")

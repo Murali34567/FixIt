@@ -153,7 +153,7 @@ class ReportRepository {
                                 val report = mapToIssueReport(map as Map<String, Any>)
                                 reports.add(report)
                             }
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
                             // Skip invalid reports
                         }
                     }

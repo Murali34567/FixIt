@@ -15,9 +15,19 @@ data class ReportIssueUiState(
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val isSubmitted: Boolean = false,
+    val uploadSuccess: Boolean = false,
 
-    // Validation errors
-    val descriptionError: String? = null,
-    val imageError: String? = null,
-    val locationError: String? = null
-)
+    // Enhanced validation errors (can have multiple errors per field)
+    val descriptionErrors: List<String> = emptyList(),
+    val imageErrors: List<String> = emptyList(),
+    val locationErrors: List<String> = emptyList(),
+
+    // Character count for description
+    val descriptionCharCount: Int = 0
+) {
+    // Helper properties for easy access
+    val hasDescriptionErrors: Boolean get() = descriptionErrors.isNotEmpty()
+    val hasImageErrors: Boolean get() = imageErrors.isNotEmpty()
+    val hasLocationErrors: Boolean get() = locationErrors.isNotEmpty()
+    val hasAnyErrors: Boolean get() = hasDescriptionErrors || hasImageErrors || hasLocationErrors
+}

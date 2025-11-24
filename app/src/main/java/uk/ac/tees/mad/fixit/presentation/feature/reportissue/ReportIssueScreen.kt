@@ -45,6 +45,9 @@ fun ReportIssueScreen(
         viewModel.initializeRepositories(context)
     }
 
+    // Add confirmation dialog state
+    var showConfirmationDialog by remember { mutableStateOf(false) }
+
     // Handle successful submission
     var showSuccess by remember { mutableStateOf(false) }
 
@@ -56,6 +59,32 @@ fun ReportIssueScreen(
             viewModel.resetForm()
             showSuccess = false
         }
+    }
+
+    // Confirmation Dialog
+    if (showConfirmationDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmationDialog = false },
+            title = { Text("Submit Report") },
+            text = { Text("Are you sure you want to submit this issue report?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showConfirmationDialog = false
+                        viewModel.submitReport(context)
+                    }
+                ) {
+                    Text("Submit")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showConfirmationDialog = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     // Create image picker handler
@@ -124,7 +153,7 @@ fun ReportIssueScreen(
                 // Image Section
                 ImagePickerSection(
                     imageUri = uiState.imageUri,
-                    imageError = uiState.imageError,
+                    imageErrors = uiState.imageErrors,
                     onCameraClick = imagePickerLaunchers.onCameraClick,
                     onGalleryClick = imagePickerLaunchers.onGalleryClick,
                     onRemoveImage = { viewModel.removeImage() }
@@ -133,7 +162,8 @@ fun ReportIssueScreen(
                 // Description Section
                 DescriptionSection(
                     description = uiState.description,
-                    descriptionError = uiState.descriptionError,
+                    descriptionErrors = uiState.descriptionErrors,
+                    descriptionCharCount = uiState.descriptionCharCount,
                     onDescriptionChange = viewModel::updateDescription
                 )
 
@@ -146,7 +176,7 @@ fun ReportIssueScreen(
                 // Location Section
                 LocationSection(
                     location = uiState.location,
-                    locationError = uiState.locationError,
+                    locationErrors = uiState.locationErrors,
                     isLoading = uiState.isLoading,
                     onLocationFetch = {
                         checkLocationPermissions(
@@ -160,7 +190,7 @@ fun ReportIssueScreen(
                 // Submit Button
                 SubmitButton(
                     isLoading = uiState.isLoading,
-                    onSubmit = viewModel::submitReport
+                    onSubmit = { showConfirmationDialog = true }
                 )
 
                 // Error Message
@@ -227,7 +257,7 @@ private fun UploadProgressSection(progress: Float) {
     }
 }
 
-// SuccessCard composable (already exists)
+// SuccessCard composable
 @Composable
 private fun SuccessCard(message: String) {
     Card(
@@ -287,13 +317,10 @@ private fun checkLocationPermissions(
     }
 }
 
-// ImagePickerSection, DescriptionSection, and IssueTypeSection remain the same as in Part 2
-// ... (keep the existing implementations)
-
 @Composable
 private fun LocationSection(
     location: uk.ac.tees.mad.fixit.data.model.IssueLocation?,
-    locationError: String?,
+    locationErrors: List<String>,
     isLoading: Boolean,
     onLocationFetch: () -> Unit
 ) {
@@ -364,13 +391,8 @@ private fun LocationSection(
                 }
             }
 
-            if (locationError != null) {
-                Text(
-                    text = locationError,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+            // Enhanced error display
+            ValidationErrorText(errors = locationErrors)
 
             Button(
                 onClick = onLocationFetch,
@@ -406,18 +428,10 @@ private fun LocationSection(
     }
 }
 
-// SubmitButton, ErrorCard, LoadingOverlay, and getIconForIssueType remain the same
-// ... (keep the existing implementations)
-
-// Add this extension function to ViewModel for location error
-private fun ReportIssueViewModel.updateLocationError(message: String) {
-    // You can add this function to your ViewModel or handle it in the existing state updates
-}
-
 @Composable
 private fun ImagePickerSection(
     imageUri: android.net.Uri?,
-    imageError: String?,
+    imageErrors: List<String>,
     onCameraClick: () -> Unit,
     onGalleryClick: () -> Unit,
     onRemoveImage: () -> Unit
@@ -459,8 +473,8 @@ private fun ImagePickerSection(
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .border(
-                        width = if (imageError != null) 2.dp else 1.dp,
-                        color = if (imageError != null)
+                        width = if (imageErrors.isNotEmpty()) 2.dp else 1.dp,
+                        color = if (imageErrors.isNotEmpty())
                             MaterialTheme.colorScheme.error
                         else
                             MaterialTheme.colorScheme.outline,
@@ -518,14 +532,8 @@ private fun ImagePickerSection(
                 }
             }
 
-            // Error message
-            if (imageError != null) {
-                Text(
-                    text = imageError,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+            // Enhanced error display
+            ValidationErrorText(errors = imageErrors)
 
             // Image picker buttons
             Row(
@@ -562,14 +570,12 @@ private fun ImagePickerSection(
     }
 }
 
-// Rest of the file remains the same until getIconForIssueType...
-
 @Composable
 private fun getIconForIssueType(issueType: IssueType) = when (issueType) {
     IssueType.POTHOLE -> Icons.Default.Warning
-    IssueType.STREETLIGHT -> Icons.Default.Info
+    IssueType.STREETLIGHT -> Icons.Default.Email
     IssueType.GARBAGE -> Icons.Default.Delete
-    IssueType.DRAINAGE -> Icons.Default.Refresh
+    IssueType.DRAINAGE -> Icons.Default.Email
     IssueType.ROAD_DAMAGE -> Icons.Default.Build
     IssueType.OTHER -> Icons.Default.Info
 }
@@ -577,7 +583,8 @@ private fun getIconForIssueType(issueType: IssueType) = when (issueType) {
 @Composable
 private fun DescriptionSection(
     description: String,
-    descriptionError: String?,
+    descriptionErrors: List<String>,
+    descriptionCharCount: Int,
     onDescriptionChange: (String) -> Unit
 ) {
     Card(
@@ -614,19 +621,36 @@ private fun DescriptionSection(
                 onValueChange = onDescriptionChange,
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = {
-                    Text("Describe the issue in detail (minimum 10 characters)")
+                    Text("Describe the issue in detail (10-500 characters)")
                 },
                 minLines = 4,
                 maxLines = 8,
-                isError = descriptionError != null,
+                isError = descriptionErrors.isNotEmpty(),
                 supportingText = {
-                    if (descriptionError != null) {
-                        Text(
-                            text = descriptionError,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    } else {
-                        Text("${description.length} characters")
+                    Column {
+                        if (descriptionErrors.isNotEmpty()) {
+                            ValidationErrorText(
+                                errors = descriptionErrors,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "$descriptionCharCount characters",
+                                color = if (descriptionErrors.isNotEmpty())
+                                    MaterialTheme.colorScheme.error
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            CharacterCounter(
+                                currentCount = descriptionCharCount,
+                                maxCount = 500,
+                                isError = descriptionCharCount > 500
+                            )
+                        }
                     }
                 },
                 shape = RoundedCornerShape(12.dp)
@@ -716,7 +740,6 @@ private fun IssueTypeSection(
     }
 }
 
-
 @Composable
 private fun SubmitButton(
     isLoading: Boolean,
@@ -752,6 +775,7 @@ private fun SubmitButton(
         }
     }
 }
+
 @Composable
 private fun ErrorCard(message: String) {
     Card(
@@ -766,7 +790,7 @@ private fun ErrorCard(message: String) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Default.Info,
+                imageVector = Icons.Default.Email,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.error
             )

@@ -71,11 +71,11 @@ enum class IssueType(val displayName: String) {
 
     companion object {
         fun fromName(name: String): IssueType {
-            return values().find { it.name == name } ?: OTHER
+            return entries.find { it.name == name } ?: OTHER
         }
 
         fun fromDisplayName(name: String): IssueType {
-            return values().find { it.displayName == name } ?: OTHER
+            return entries.find { it.displayName == name } ?: OTHER
         }
     }
 }
@@ -91,7 +91,7 @@ enum class ReportStatus(val displayName: String) {
 
     companion object {
         fun fromName(name: String): ReportStatus {
-            return values().find { it.name == name } ?: PENDING
+            return entries.find { it.name == name } ?: PENDING
         }
     }
 }
