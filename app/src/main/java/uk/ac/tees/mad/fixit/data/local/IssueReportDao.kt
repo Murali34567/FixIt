@@ -36,4 +36,7 @@ interface IssueReportDao {
 
     @Query("SELECT COUNT(*) FROM issue_reports WHERE userId = :userId AND isSynced = 0")
     suspend fun getPendingSyncCount(userId: String): Int
+
+    @Query("SELECT * FROM issue_reports WHERE userId = :userId AND isSynced = 0")
+    suspend fun getUnsyncedReports(userId: String): List<IssueReportEntity>
 }

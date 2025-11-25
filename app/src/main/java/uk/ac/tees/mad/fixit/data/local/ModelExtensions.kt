@@ -4,7 +4,7 @@ import uk.ac.tees.mad.fixit.data.model.IssueLocation
 import uk.ac.tees.mad.fixit.data.model.IssueReport
 
 // Convert from domain model to entity
-fun IssueReport.toEntity(): IssueReportEntity {
+fun IssueReport.toEntity(isSynced: Boolean = true): IssueReportEntity {
     return IssueReportEntity(
         id = this.id,
         userId = this.userId,
@@ -15,7 +15,9 @@ fun IssueReport.toEntity(): IssueReportEntity {
         longitude = this.location.longitude,
         address = this.location.address,
         status = this.status,
-        timestamp = this.timestamp
+        timestamp = this.timestamp,
+        lastUpdated = System.currentTimeMillis(),
+        isSynced = isSynced
     )
 }
 
