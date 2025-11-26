@@ -115,5 +115,9 @@ dependencies {
 
     // For file operations
     implementation(libs.commons.io)
+
+    // shimmer effect
+    // Shimmer effect for loading
+    implementation("com.valentinilk.shimmer:compose-shimmer:1.2.0")
 }
 

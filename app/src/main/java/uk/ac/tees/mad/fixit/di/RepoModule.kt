@@ -8,7 +8,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import uk.ac.tees.mad.fixit.data.local.FixItDatabase
 import uk.ac.tees.mad.fixit.data.local.IssueReportDao
+import uk.ac.tees.mad.fixit.domain.repository.AuthRepository
+import uk.ac.tees.mad.fixit.domain.repository.ImageUploadRepository
 import uk.ac.tees.mad.fixit.domain.repository.IssueRepository
+import uk.ac.tees.mad.fixit.domain.repository.LocationRepository
 import uk.ac.tees.mad.fixit.domain.repository.ReportRepository
 import uk.ac.tees.mad.fixit.domain.util.NetworkHelper
 import uk.ac.tees.mad.fixit.domain.util.SyncManager
@@ -40,6 +43,30 @@ object RepositoryModule {
     @Singleton
     fun provideSyncManager(): SyncManager {
         return SyncManager()
+    }
+
+    @Provides
+    @Singleton
+    fun provideReportRepository(): ReportRepository {
+        return ReportRepository()
+    }
+
+    @Provides
+    @Singleton
+    fun provideAuthRepository(): AuthRepository {
+        return AuthRepository()
+    }
+
+    @Provides
+    @Singleton
+    fun provideImageUploadRepository(@ApplicationContext context: Context): ImageUploadRepository {
+        return ImageUploadRepository(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideLocationRepository(@ApplicationContext context: Context): LocationRepository {
+        return LocationRepository(context)
     }
 
     @Provides

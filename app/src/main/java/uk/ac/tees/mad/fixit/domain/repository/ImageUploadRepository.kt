@@ -16,8 +16,9 @@ import uk.ac.tees.mad.fixit.data.remote.SupabaseConfig
 import uk.ac.tees.mad.fixit.data.model.Result
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import javax.inject.Inject
 
-class ImageUploadRepository(private val context: Context) {
+class ImageUploadRepository @Inject constructor(private val context: Context) {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)

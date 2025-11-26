@@ -9,6 +9,7 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
+import jakarta.inject.Inject
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -20,7 +21,7 @@ import uk.ac.tees.mad.fixit.data.model.ReportStatus
 import uk.ac.tees.mad.fixit.data.model.Result
 import java.util.UUID
 
-class ReportRepository {
+class ReportRepository @Inject constructor() {
 
     private val database: FirebaseDatabase = Firebase.database("https://fixit-7531c-default-rtdb.asia-southeast1.firebasedatabase.app/")
     private val auth: FirebaseAuth = Firebase.auth

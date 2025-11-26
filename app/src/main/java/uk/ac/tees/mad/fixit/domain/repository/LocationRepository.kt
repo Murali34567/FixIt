@@ -17,8 +17,9 @@ import kotlinx.coroutines.tasks.await
 import uk.ac.tees.mad.fixit.data.model.IssueLocation
 import java.io.IOException
 import java.util.Locale
+import javax.inject.Inject
 
-class LocationRepository(private val context: Context) {
+class LocationRepository @Inject constructor(private val context: Context) {
 
     private val fusedLocationClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)

@@ -6,8 +6,9 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import uk.ac.tees.mad.fixit.data.model.AuthResult
+import javax.inject.Inject
 
-class AuthRepository {
+class AuthRepository @Inject constructor() {
 
     private val firebaseAuth: FirebaseAuth = FirebaseAuth.getInstance()
 
