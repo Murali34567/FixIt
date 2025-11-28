@@ -10,11 +10,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.compose.rememberNavController
+import dagger.hilt.android.AndroidEntryPoint
 import uk.ac.tees.mad.fixit.domain.repository.AuthRepository
 import uk.ac.tees.mad.fixit.presentation.navigation.Screen
 import uk.ac.tees.mad.fixit.presentation.navigation.NavGraph
 import uk.ac.tees.mad.fixit.ui.theme.FixItTheme
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

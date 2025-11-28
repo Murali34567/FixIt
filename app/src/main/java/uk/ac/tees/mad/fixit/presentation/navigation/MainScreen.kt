@@ -80,7 +80,7 @@ fun MainScreen(mainNavController: NavHostController) {
             }
 
             composable(Screen.ViewReports.route) {
-                ViewReportsScreen()
+                ViewReportsScreen(navController = mainNavController)
             }
 
             composable(Screen.Profile.route) {

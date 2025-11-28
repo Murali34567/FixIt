@@ -117,7 +117,9 @@ dependencies {
     implementation(libs.commons.io)
 
     // shimmer effect
-    // Shimmer effect for loading
     implementation("com.valentinilk.shimmer:compose-shimmer:1.2.0")
+
+    // Pull to Refresh
+    implementation("com.google.accompanist:accompanist-swiperefresh:0.32.0")
 }
 
