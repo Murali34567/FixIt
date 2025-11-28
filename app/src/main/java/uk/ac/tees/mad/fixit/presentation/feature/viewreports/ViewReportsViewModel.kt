@@ -23,10 +23,15 @@ class ViewReportsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ViewReportsUiState())
     val uiState: StateFlow<ViewReportsUiState> = _uiState.asStateFlow()
 
+    // FIX: Get current user ID from Firebase Auth
     private val currentUserId: String
         get() = FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
     init {
+        println("🟡 ViewReportsViewModel initialized - User ID: $currentUserId")
+        if (currentUserId.isBlank()) {
+            println("🔴 ERROR: No authenticated user found!")
+        }
         loadReports()
         observeSyncStatus()
     }
@@ -35,7 +40,13 @@ class ViewReportsViewModel @Inject constructor(
      * Load reports with cache-first strategy
      */
     fun loadReports() {
-        if (currentUserId.isBlank()) return
+        if (currentUserId.isBlank()) {
+            println("🔴 Cannot load reports: No user ID")
+            _uiState.update { it.copy(errorMessage = "Not authenticated. Please log in.") }
+            return
+        }
+
+        println("🟡 Loading reports for user: $currentUserId")
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
@@ -43,9 +54,11 @@ class ViewReportsViewModel @Inject constructor(
             issueRepository.getAllReports(currentUserId).collect { result ->
                 when (result) {
                     is Result.Loading -> {
+                        println("🟡 Reports loading...")
                         _uiState.update { it.copy(isLoading = true) }
                     }
                     is Result.Success -> {
+                        println("✅ Reports loaded successfully: ${result.data.size} reports")
                         _uiState.update {
                             it.copy(
                                 reports = result.data,
@@ -57,6 +70,7 @@ class ViewReportsViewModel @Inject constructor(
                         updatePendingSyncCount()
                     }
                     is Result.Error -> {
+                        println("🔴 Error loading reports: ${result.message}")
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
@@ -188,12 +202,14 @@ class ViewReportsViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Update pending sync count badge
-     */
     private suspend fun updatePendingSyncCount() {
-        val pendingCount = issueRepository.getPendingSyncCount(currentUserId)
-        _uiState.update { it.copy(pendingSyncCount = pendingCount) }
+        try {
+            val pendingCount = issueRepository.getPendingSyncCount(currentUserId)
+            println("🟡 Pending sync count: $pendingCount")
+            _uiState.update { it.copy(pendingSyncCount = pendingCount) }
+        } catch (e: Exception) {
+            println("🔴 Error getting sync count: ${e.message}")
+        }
     }
 
     /**

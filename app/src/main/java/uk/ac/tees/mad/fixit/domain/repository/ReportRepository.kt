@@ -33,159 +33,150 @@ class ReportRepository @Inject constructor() {
     private fun getCurrentUserId(): String {
         val currentUser = auth.currentUser
         if (currentUser == null) {
-            Log.e(TAG, "No authenticated user found")
-            throw Exception("User not authenticated. Please sign in first.")
+            Log.e(TAG, "❌ No authenticated user found")
+            throw Exception("User not authenticated")
         }
-        Log.d(TAG, "User ID: ${currentUser.uid}")
+        Log.d(TAG, "✅ User ID: ${currentUser.uid}")
         return currentUser.uid
     }
 
     private fun getReportsRef() = database.getReference("reports")
     private fun getUserReportsRef(userId: String) = getReportsRef().child(userId)
 
-    /**
-     * Create a new issue report
-     */
     suspend fun createReport(report: IssueReport): Flow<Result<String>> = callbackFlow {
-        Log.d(TAG, "Starting report creation...")
+        Log.d(TAG, "📝 Creating report...")
 
         try {
             val userId = getCurrentUserId()
-
-            // Generate a unique ID for the report
             val reportId = report.id.ifEmpty { UUID.randomUUID().toString() }
-            val reportWithId = report.copy(
-                id = reportId,
-                userId = userId
-            )
+            val reportWithId = report.copy(id = reportId, userId = userId)
 
-            Log.d(TAG, "Report data: $reportWithId")
-            Log.d(TAG, "Report map: ${reportWithId.toMap()}")
+            Log.d(TAG, "📤 Saving to: reports/$userId/$reportId")
+            Log.d(TAG, "📄 Data: ${reportWithId.toMap()}")
 
-            // Send loading state
             trySend(Result.Loading)
 
-            Log.d(TAG, "Attempting to save to Firebase...")
-
-            // Save to Firebase with timeout
-            val task = getUserReportsRef(userId).child(reportId).setValue(reportWithId.toMap())
-
-            // Add completion listener with timeout
-            task.addOnCompleteListener { taskResult ->
-                if (taskResult.isSuccessful) {
-                    Log.d(TAG, "✅ Report saved successfully with ID: $reportId")
-                    trySend(Result.Success(reportId))
-                } else {
-                    val errorMsg = taskResult.exception?.message ?: "Unknown error"
-                    Log.e(TAG, "❌ Failed to save report: $errorMsg")
-                    trySend(Result.Error("Failed to create report: $errorMsg", taskResult.exception))
+            getUserReportsRef(userId).child(reportId).setValue(reportWithId.toMap())
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        Log.d(TAG, "✅ Report saved to Firebase: $reportId")
+                        trySend(Result.Success(reportId))
+                    } else {
+                        val error = task.exception?.message ?: "Unknown error"
+                        Log.e(TAG, "🔴 Failed to save: $error")
+                        trySend(Result.Error("Failed to create report: $error", task.exception))
+                    }
+                    close()
                 }
-                close()
-            }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "🔴 Firebase error: ${e.message}")
+                    trySend(Result.Error("Firebase error: ${e.message}", e))
+                    close()
+                }
 
-            // Also add failure listener as backup
-            task.addOnFailureListener { exception ->
-                Log.e(TAG, "❌ Firebase setValue failed: ${exception.message}")
-                trySend(Result.Error("Firebase error: ${exception.message}", exception))
-                close()
-            }
-
-            // Add cancellation listener
-            task.addOnCanceledListener {
-                Log.e(TAG, "❌ Firebase operation cancelled")
-                trySend(Result.Error("Operation cancelled"))
-                close()
-            }
-
-        } catch (exception: Exception) {
-            Log.e(TAG, "❌ Exception in createReport: ${exception.message}", exception)
-            trySend(Result.Error("Failed to create report: ${exception.message}", exception))
+        } catch (e: Exception) {
+            Log.e(TAG, "🔴 Exception: ${e.message}", e)
+            trySend(Result.Error("Failed to create report: ${e.message}", e))
             close()
         }
 
         awaitClose {
-            Log.d(TAG, "Flow closed")
+            Log.d(TAG, "🔚 CreateReport flow closed")
         }
     }
 
     /**
-     * Update an existing report
+     * 🔥 FIXED: Get all reports with proper logging
      */
+    fun getReportsByUserId(userId: String): Flow<Result<List<IssueReport>>> = callbackFlow {
+        Log.d(TAG, "📥 Fetching reports for user: $userId")
+        Log.d(TAG, "📍 Firebase path: reports/$userId")
+
+        try {
+            trySend(Result.Loading)
+
+            val reportsListener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    Log.d(TAG, "📊 Firebase onDataChange called")
+                    Log.d(TAG, "📊 Snapshot exists: ${snapshot.exists()}")
+                    Log.d(TAG, "📊 Children count: ${snapshot.childrenCount}")
+
+                    val reports = mutableListOf<IssueReport>()
+
+                    snapshot.children.forEachIndexed { index, child ->
+                        try {
+                            Log.d(TAG, "  Processing child $index: ${child.key}")
+                            val reportMap = child.value as? Map<*, *>
+
+                            if (reportMap != null) {
+                                Log.d(TAG, "  Report data: $reportMap")
+                                val report = mapToIssueReport(reportMap as Map<String, Any>)
+                                reports.add(report)
+                                Log.d(TAG, "  ✅ Parsed: ${report.issueType.displayName}")
+                            } else {
+                                Log.w(TAG, "  ⚠️ Child $index has null data")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "  🔴 Error parsing child $index: ${e.message}")
+                        }
+                    }
+
+                    Log.d(TAG, "✅ Successfully parsed ${reports.size} reports")
+                    trySend(Result.Success(reports))
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e(TAG, "🔴 Firebase error: ${error.message}")
+                    Log.e(TAG, "🔴 Error code: ${error.code}")
+                    Log.e(TAG, "🔴 Error details: ${error.details}")
+                    trySend(Result.Error("Failed to get reports: ${error.message}"))
+                }
+            }
+
+            val ref = getUserReportsRef(userId)
+            ref.addValueEventListener(reportsListener)
+
+            awaitClose {
+                Log.d(TAG, "🔚 Removing Firebase listener")
+                ref.removeEventListener(reportsListener)
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "🔴 Exception in getReportsByUserId: ${e.message}", e)
+            trySend(Result.Error("Failed to get reports: ${e.message}", e))
+            close()
+        }
+    }
+
     suspend fun updateReport(reportId: String, report: IssueReport): Flow<Result<Boolean>> = callbackFlow {
         try {
             val userId = getCurrentUserId()
-
             trySend(Result.Loading)
 
             getUserReportsRef(userId).child(reportId).setValue(report.toMap())
                 .addOnSuccessListener {
+                    Log.d(TAG, "✅ Report updated: $reportId")
                     trySend(Result.Success(true))
                     close()
                 }
-                .addOnFailureListener { exception ->
-                    trySend(Result.Error("Failed to update report: ${exception.message}", exception))
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "🔴 Update failed: ${e.message}")
+                    trySend(Result.Error("Failed to update: ${e.message}", e))
                     close()
                 }
                 .await()
 
-        } catch (exception: Exception) {
-            trySend(Result.Error("Failed to update report: ${exception.message}", exception))
+        } catch (e: Exception) {
+            trySend(Result.Error("Failed to update: ${e.message}", e))
             close()
         }
 
         awaitClose { }
     }
 
-    /**
-     * Get all reports for the current user
-     */
-    fun getReportsByUserId(userId: String): Flow<Result<List<IssueReport>>> = callbackFlow {
-        try {
-            trySend(Result.Loading)
-
-            val reportsListener = object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    val reports = mutableListOf<IssueReport>()
-
-                    snapshot.children.forEach { child ->
-                        try {
-                            val reportMap = child.value as? Map<*, *>
-                            reportMap?.let { map ->
-                                val report = mapToIssueReport(map as Map<String, Any>)
-                                reports.add(report)
-                            }
-                        } catch (_: Exception) {
-                            // Skip invalid reports
-                        }
-                    }
-
-                    trySend(Result.Success(reports))
-                }
-
-                override fun onCancelled(error: DatabaseError) {
-                    trySend(Result.Error("Failed to get reports: ${error.message}"))
-                }
-            }
-
-            getUserReportsRef(userId).addValueEventListener(reportsListener)
-
-            awaitClose {
-                getUserReportsRef(userId).removeEventListener(reportsListener)
-            }
-
-        } catch (exception: Exception) {
-            trySend(Result.Error("Failed to get reports: ${exception.message}", exception))
-            close()
-        }
-    }
-
-    /**
-     * Get a specific report by ID
-     */
     suspend fun getReportById(reportId: String): Flow<Result<IssueReport>> = callbackFlow {
         try {
             val userId = getCurrentUserId()
-
             trySend(Result.Loading)
 
             getUserReportsRef(userId).child(reportId).get()
@@ -201,51 +192,46 @@ class ReportRepository @Inject constructor() {
                     }
                     close()
                 }
-                .addOnFailureListener { exception ->
-                    trySend(Result.Error("Failed to get report: ${exception.message}", exception))
+                .addOnFailureListener { e ->
+                    trySend(Result.Error("Failed to get report: ${e.message}", e))
                     close()
                 }
                 .await()
 
-        } catch (exception: Exception) {
-            trySend(Result.Error("Failed to get report: ${exception.message}", exception))
+        } catch (e: Exception) {
+            trySend(Result.Error("Failed to get report: ${e.message}", e))
             close()
         }
 
         awaitClose { }
     }
 
-    /**
-     * Delete a report
-     */
     suspend fun deleteReport(reportId: String): Flow<Result<Boolean>> = callbackFlow {
         try {
             val userId = getCurrentUserId()
-
             trySend(Result.Loading)
 
             getUserReportsRef(userId).child(reportId).removeValue()
                 .addOnSuccessListener {
+                    Log.d(TAG, "✅ Report deleted: $reportId")
                     trySend(Result.Success(true))
                     close()
                 }
-                .addOnFailureListener { exception ->
-                    trySend(Result.Error("Failed to delete report: ${exception.message}", exception))
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "🔴 Delete failed: ${e.message}")
+                    trySend(Result.Error("Failed to delete: ${e.message}", e))
                     close()
                 }
                 .await()
 
-        } catch (exception: Exception) {
-            trySend(Result.Error("Failed to delete report: ${exception.message}", exception))
+        } catch (e: Exception) {
+            trySend(Result.Error("Failed to delete: ${e.message}", e))
             close()
         }
 
         awaitClose { }
     }
 
-    /**
-     * Convert Firebase map to IssueReport object
-     */
     private fun mapToIssueReport(map: Map<String, Any>): IssueReport {
         val locationMap = map["location"] as? Map<String, Any> ?: emptyMap()
 
@@ -261,18 +247,16 @@ class ReportRepository @Inject constructor() {
         )
     }
 
-    // Temporary test function in ReportRepository
     suspend fun testFirebaseConnection(): Boolean {
         return try {
-            Log.d(TAG, "Testing Firebase connection...")
+            Log.d(TAG, "🧪 Testing Firebase connection...")
             val testRef = database.getReference("connection_test")
             testRef.setValue("test_${System.currentTimeMillis()}").await()
             Log.d(TAG, "✅ Firebase connection test PASSED")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Firebase connection test FAILED: ${e.message}")
+            Log.e(TAG, "🔴 Firebase connection test FAILED: ${e.message}")
             false
         }
     }
 }
-

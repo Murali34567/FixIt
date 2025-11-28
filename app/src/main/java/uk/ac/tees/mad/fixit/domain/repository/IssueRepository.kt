@@ -1,6 +1,8 @@
 package uk.ac.tees.mad.fixit.domain.repository
 
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import uk.ac.tees.mad.fixit.data.local.IssueReportDao
@@ -16,10 +18,6 @@ import uk.ac.tees.mad.fixit.domain.util.SyncState
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
-/**
- * Unified repository that handles both local (Room) and remote (Firebase) data
- * Implements cache-first strategy with background sync
- */
 class IssueRepository @Inject constructor(
     private val localDao: IssueReportDao,
     private val remoteRepository: ReportRepository,
@@ -28,206 +26,276 @@ class IssueRepository @Inject constructor(
 ) {
 
     companion object {
-        private const val SYNC_THRESHOLD_MINUTES = 15L // Sync every 15 minutes
+        private const val TAG = "IssueRepository"
+        private const val SYNC_THRESHOLD_MINUTES = 1L
     }
 
     /**
-     * Get all reports for user with cache-first strategy
+     * 🔥 FIXED: Properly sync with Firebase FIRST, then emit local data
      */
     fun getAllReports(userId: String): Flow<Result<List<IssueReport>>> = flow {
         try {
+            Log.d(TAG, "🟡 getAllReports called for userId: $userId")
+
+            if (userId.isBlank()) {
+                emit(Result.Error("User not authenticated"))
+                return@flow
+            }
+
             emit(Result.Loading)
 
-            // Always get from local cache first (offline support)
-            val localReports = localDao.getReportsByUserId(userId)
-                .map { entities ->
-                    entities.toDomainModels()
+            // STEP 1: If network available and should sync, do Firebase sync FIRST
+            if (networkHelper.isNetworkAvailable() && shouldSync()) {
+                Log.d(TAG, "🟡 Syncing with Firebase...")
+                syncManager.setSyncState(SyncState.SYNCING)
+
+                try {
+                    // Fetch from Firebase
+                    remoteRepository.getReportsByUserId(userId).collect { firebaseResult ->
+                        when (firebaseResult) {
+                            is Result.Success -> {
+                                Log.d(TAG, "✅ Firebase returned ${firebaseResult.data.size} reports")
+
+                                // Clear old data and save new data
+                                localDao.deleteAllUserReports(userId)
+                                val entities = firebaseResult.data.map { it.toEntity(isSynced = true) }
+                                localDao.insertAll(entities)
+
+                                Log.d(TAG, "✅ Saved to local database")
+                                syncManager.setSyncState(SyncState.COMPLETED)
+                            }
+                            is Result.Error -> {
+                                Log.e(TAG, "🔴 Firebase sync failed: ${firebaseResult.message}")
+                                syncManager.setSyncState(SyncState.ERROR(firebaseResult.message))
+                            }
+                            is Result.Loading -> {
+                                Log.d(TAG, "🟡 Firebase loading...")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "🔴 Sync error: ${e.message}", e)
+                    syncManager.setSyncState(SyncState.ERROR(e.message ?: "Sync failed"))
+                }
+            } else {
+                Log.d(TAG, "🟡 Using cached data (no network or recently synced)")
+            }
+
+            // STEP 2: Now observe and emit from local database
+            localDao.getReportsByUserId(userId)
+                .catch { e ->
+                    Log.e(TAG, "🔴 Local DB error: ${e.message}", e)
+                    emit(Result.Error("Failed to load from database: ${e.message}", e as? Exception))
+                }
+                .collect { entities ->
+                    val reports = entities.toDomainModels()
+                    Log.d(TAG, "✅ Emitting ${reports.size} reports from local DB")
+                    emit(Result.Success(reports))
                 }
 
-            // Emit local data immediately
-            localReports.collect { reports ->
-                emit(Result.Success(reports))
-            }
-
-            // Sync with remote if network available and data is stale
-            if (shouldSync()) {
-                syncReports(userId)
-            }
-
         } catch (e: Exception) {
+            Log.e(TAG, "🔴 Error in getAllReports: ${e.message}", e)
             emit(Result.Error("Failed to load reports: ${e.message}", e))
         }
     }
 
-    /**
-     * Get specific report by ID
-     */
     suspend fun getReportById(reportId: String, userId: String): Result<IssueReport> {
         return try {
-            // Try local first
             val localReport = localDao.getReportById(reportId, userId)
             if (localReport != null) {
                 Result.Success(localReport.toDomainModel())
             } else {
-                // Fall back to remote if not found locally
                 if (networkHelper.isNetworkAvailable()) {
-                    // This would need to be implemented in ReportRepository
-                    // For now, we'll return error
-                    Result.Error("Report not found")
+                    forceSync(userId)
+                    val reportAfterSync = localDao.getReportById(reportId, userId)
+                    if (reportAfterSync != null) {
+                        Result.Success(reportAfterSync.toDomainModel())
+                    } else {
+                        Result.Error("Report not found")
+                    }
                 } else {
-                    Result.Error("Report not found and no network connection")
+                    Result.Error("Report not found and no network")
                 }
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Error getting report: ${e.message}", e)
             Result.Error("Failed to get report: ${e.message}", e)
         }
     }
 
-    /**
-     * Create new report - write to both local and remote
-     */
     suspend fun createReport(report: IssueReport): Result<String> {
         return try {
-            // Save to local database first (optimistic UI)
-            localDao.insertReport(report.toEntity().copy(isSynced = false))
+            Log.d(TAG, "🟡 Creating report: ${report.id}")
 
-            // Try to save to remote if network available
             if (networkHelper.isNetworkAvailable()) {
-                // This would use the existing ReportRepository.createReport flow
-                // For now, we'll simulate success
-                // In Part 3, we'll properly integrate with the existing flow
-                localDao.insertReport(report.toEntity().copy(isSynced = true))
-                Result.Success(report.id)
+                // Try Firebase first
+                var firebaseSuccess = false
+                var errorMessage = ""
+
+                remoteRepository.createReport(report).collect { result ->
+                    when (result) {
+                        is Result.Success -> {
+                            Log.d(TAG, "✅ Saved to Firebase")
+                            firebaseSuccess = true
+                            localDao.insertReport(report.toEntity(isSynced = true))
+                        }
+                        is Result.Error -> {
+                            Log.e(TAG, "🔴 Firebase save failed: ${result.message}")
+                            errorMessage = result.message
+                            localDao.insertReport(report.toEntity(isSynced = false))
+                        }
+                        is Result.Loading -> {
+                            Log.d(TAG, "🟡 Saving to Firebase...")
+                        }
+                    }
+                }
+
+                if (firebaseSuccess) {
+                    Result.Success(report.id)
+                } else {
+                    Result.Error("Saved locally but sync failed: $errorMessage")
+                }
             } else {
-                // Report saved locally but needs sync later
+                localDao.insertReport(report.toEntity(isSynced = false))
+                Log.d(TAG, "⚠️ Offline - saved locally only")
                 Result.Success(report.id)
             }
         } catch (e: Exception) {
-            Result.Error("Failed to create report: ${e.message}", e)
+            Log.e(TAG, "Error creating report: ${e.message}", e)
+            try {
+                localDao.insertReport(report.toEntity(isSynced = false))
+                Result.Success(report.id)
+            } catch (localError: Exception) {
+                Result.Error("Failed completely: ${e.message}", e)
+            }
         }
     }
 
-    /**
-     * Update existing report
-     */
     suspend fun updateReport(report: IssueReport): Result<Boolean> {
         return try {
-            // Update local database
-            localDao.updateReport(report.toEntity().copy(isSynced = false))
+            localDao.updateReport(report.toEntity(isSynced = false))
 
-            // Try to update remote if network available
             if (networkHelper.isNetworkAvailable()) {
-                // This would use ReportRepository.updateReport
-                localDao.updateReport(report.toEntity().copy(isSynced = true))
-                Result.Success(true)
+                var success = false
+                remoteRepository.updateReport(report.id, report).collect { result ->
+                    if (result is Result.Success) {
+                        localDao.updateReport(report.toEntity(isSynced = true))
+                        success = true
+                    }
+                }
+                Result.Success(success)
             } else {
-                Result.Success(true) // Updated locally, will sync later
+                Result.Success(true)
             }
         } catch (e: Exception) {
-            Result.Error("Failed to update report: ${e.message}", e)
+            Result.Error("Failed to update: ${e.message}", e)
         }
     }
 
-    /**
-     * Delete report
-     */
     suspend fun deleteReport(reportId: String, userId: String): Result<Boolean> {
         return try {
-            // Mark as deleted locally first
             val localReport = localDao.getReportById(reportId, userId)
             if (localReport != null) {
                 localDao.deleteReport(reportId, userId)
+                Log.d(TAG, "✅ Deleted from local DB")
 
-                // Try to delete from remote if network available
                 if (networkHelper.isNetworkAvailable()) {
-                    // This would use ReportRepository.deleteReport
-                    Result.Success(true)
-                } else {
-                    // We might want to track deletions for sync
-                    Result.Success(true)
+                    remoteRepository.deleteReport(reportId).collect { result ->
+                        if (result is Result.Success) {
+                            Log.d(TAG, "✅ Deleted from Firebase")
+                        }
+                    }
                 }
+                Result.Success(true)
             } else {
                 Result.Error("Report not found")
             }
         } catch (e: Exception) {
-            Result.Error("Failed to delete report: ${e.message}", e)
+            Result.Error("Failed to delete: ${e.message}", e)
         }
     }
 
-    /**
-     * Sync local data with remote
-     */
     suspend fun syncReports(userId: String): Result<Boolean> {
         return try {
             if (!networkHelper.isNetworkAvailable()) {
-                return Result.Error("No network connection available")
+                return Result.Error("No network connection")
             }
 
-            syncManager.setSyncState(SyncState.SYNCING)
-
-            // Get unsynced local reports
-            val unsyncedReports = localDao.getReportsUpdatedSince(userId, 0) // Get all for now
-
-            // Sync each unsynced report
-            unsyncedReports.forEach { localReport ->
-                if (!localReport.isSynced) {
-                    // Convert to domain model and sync with remote
-                    val domainReport = localReport.toDomainModel()
-                    // This would call remoteRepository.createReport or updateReport
-                    // For now, we'll mark as synced
-                    localDao.updateReport(localReport.copy(isSynced = true))
-                }
-            }
-
-            // Also fetch latest from remote and update local
-            // This would be implemented when we have the remote methods
-            syncManager.setSyncState(SyncState.COMPLETED)
+            forceSync(userId)
             Result.Success(true)
-
         } catch (e: Exception) {
-            syncManager.setSyncState(SyncState.ERROR(e.message ?: "Sync failed"))
             Result.Error("Sync failed: ${e.message}", e)
         }
     }
 
-    /**
-     * Get reports filtered by status
-     */
+    private suspend fun forceSync(userId: String) {
+        syncManager.setSyncState(SyncState.SYNCING)
+
+        try {
+            remoteRepository.getReportsByUserId(userId).collect { result ->
+                when (result) {
+                    is Result.Success -> {
+                        localDao.deleteAllUserReports(userId)
+                        val entities = result.data.map { it.toEntity(isSynced = true) }
+                        localDao.insertAll(entities)
+                        syncManager.setSyncState(SyncState.COMPLETED)
+                    }
+                    is Result.Error -> {
+                        syncManager.setSyncState(SyncState.ERROR(result.message))
+                    }
+                    else -> {}
+                }
+            }
+        } catch (e: Exception) {
+            syncManager.setSyncState(SyncState.ERROR(e.message ?: "Sync failed"))
+        }
+    }
+
     fun getReportsByStatus(userId: String, status: ReportStatus): Flow<Result<List<IssueReport>>> = flow {
         try {
             emit(Result.Loading)
 
-            val reports = localDao.getReportsByStatus(userId, status)
-                .map { entities ->
-                    entities.toDomainModels()
-                }
-
-            reports.collect { filteredReports ->
-                emit(Result.Success(filteredReports))
+            if (networkHelper.isNetworkAvailable() && shouldSync()) {
+                forceSync(userId)
             }
 
+            localDao.getReportsByStatus(userId, status)
+                .map { entities -> entities.toDomainModels() }
+                .collect { reports ->
+                    emit(Result.Success(reports))
+                }
         } catch (e: Exception) {
             emit(Result.Error("Failed to load filtered reports: ${e.message}", e))
         }
     }
 
-    /**
-     * Check if we should sync based on last sync time
-     */
     private suspend fun shouldSync(): Boolean {
         val lastSync = syncManager.lastSyncTime.value
         return if (lastSync == null) {
-            true // Never synced
+            true
         } else {
             val timeSinceLastSync = System.currentTimeMillis() - lastSync
             timeSinceLastSync > TimeUnit.MINUTES.toMillis(SYNC_THRESHOLD_MINUTES)
         }
     }
 
-    /**
-     * Get pending sync count (for badge indicators)
-     */
     suspend fun getPendingSyncCount(userId: String): Int {
-        return localDao.getPendingSyncCount(userId)
+        return try {
+            localDao.getPendingSyncCount(userId)
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    suspend fun forceRefresh(userId: String): Result<Boolean> {
+        return try {
+            if (!networkHelper.isNetworkAvailable()) {
+                return Result.Error("No network connection")
+            }
+            forceSync(userId)
+            Result.Success(true)
+        } catch (e: Exception) {
+            Result.Error("Refresh failed: ${e.message}", e)
+        }
     }
 }

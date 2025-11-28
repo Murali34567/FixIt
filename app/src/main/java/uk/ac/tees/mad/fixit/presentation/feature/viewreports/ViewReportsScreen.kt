@@ -150,8 +150,7 @@ fun ViewReportsScreen(
                         ReportsList(
                             reports = uiState.filteredReports,
                             onReportClick = { report ->
-                                // Navigate to detail screen (to be implemented in Part 5)
-                                // navController.navigate("${Screen.IssueDetail.route}/${report.id}")
+                                navController?.navigate(Screen.IssueDetail.createRoute(report.id))
                             },
                             onDeleteClick = { report ->
                                 coroutineScope.launch {

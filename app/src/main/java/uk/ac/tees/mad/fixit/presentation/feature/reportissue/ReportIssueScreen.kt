@@ -25,7 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import uk.ac.tees.mad.fixit.data.model.IssueType
@@ -33,17 +33,14 @@ import uk.ac.tees.mad.fixit.data.model.IssueType
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReportIssueScreen(
-    viewModel: ReportIssueViewModel = viewModel()
+    viewModel: ReportIssueViewModel = hiltViewModel() // Changed: Use Hilt ViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val uploadProgress by viewModel.uploadProgress.collectAsState()
     val scrollState = rememberScrollState()
     val context = LocalContext.current
 
-    // Initialize repositories
-    LaunchedEffect(Unit) {
-        viewModel.initializeRepositories(context)
-    }
+    // REMOVED: No more manual initialization needed with Hilt
 
     // Add confirmation dialog state
     var showConfirmationDialog by remember { mutableStateOf(false) }
@@ -54,7 +51,6 @@ fun ReportIssueScreen(
     LaunchedEffect(uiState.isSubmitted) {
         if (uiState.isSubmitted) {
             showSuccess = true
-            // Reset form after delay
             delay(2000)
             viewModel.resetForm()
             showSuccess = false
@@ -105,8 +101,6 @@ fun ReportIssueScreen(
 
             if (fineLocationGranted || coarseLocationGranted) {
                 viewModel.fetchCurrentLocation()
-            } else {
-                // Handle permission denied
             }
         }
     )
@@ -140,17 +134,14 @@ fun ReportIssueScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                // Success Message
                 if (showSuccess) {
                     SuccessCard(message = "Report submitted successfully!")
                 }
 
-                // Upload Progress (show only when uploading)
                 if (uiState.isLoading && uploadProgress > 0f) {
                     UploadProgressSection(progress = uploadProgress)
                 }
 
-                // Image Section
                 ImagePickerSection(
                     imageUri = uiState.imageUri,
                     imageErrors = uiState.imageErrors,
@@ -159,7 +150,6 @@ fun ReportIssueScreen(
                     onRemoveImage = { viewModel.removeImage() }
                 )
 
-                // Description Section
                 DescriptionSection(
                     description = uiState.description,
                     descriptionErrors = uiState.descriptionErrors,
@@ -167,13 +157,11 @@ fun ReportIssueScreen(
                     onDescriptionChange = viewModel::updateDescription
                 )
 
-                // Issue Type Section
                 IssueTypeSection(
                     selectedIssueType = uiState.selectedIssueType,
                     onIssueTypeSelected = viewModel::updateIssueType
                 )
 
-                // Location Section
                 LocationSection(
                     location = uiState.location,
                     locationErrors = uiState.locationErrors,
@@ -187,22 +175,18 @@ fun ReportIssueScreen(
                     }
                 )
 
-                // Submit Button
                 SubmitButton(
                     isLoading = uiState.isLoading,
                     onSubmit = { showConfirmationDialog = true }
                 )
 
-                // Error Message
                 uiState.errorMessage?.let { message ->
                     ErrorCard(message = message)
                 }
 
-                // Spacer for bottom padding
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Loading Overlay
             if (uiState.isLoading) {
                 LoadingOverlay()
             }
@@ -210,7 +194,6 @@ fun ReportIssueScreen(
     }
 }
 
-// Add Upload Progress Section
 @Composable
 private fun UploadProgressSection(progress: Float) {
     Card(
@@ -257,7 +240,6 @@ private fun UploadProgressSection(progress: Float) {
     }
 }
 
-// SuccessCard composable
 @Composable
 private fun SuccessCard(message: String) {
     Card(
@@ -285,9 +267,6 @@ private fun SuccessCard(message: String) {
     }
 }
 
-/**
- * Check location permissions and request if needed
- */
 private fun checkLocationPermissions(
     context: Context,
     permissionLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
@@ -307,10 +286,8 @@ private fun checkLocationPermissions(
     ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
     if (fineLocationGranted || coarseLocationGranted) {
-        // Permission already granted
         onPermissionGranted()
     } else {
-        // Request permission
         permissionLauncher.launch(
             arrayOf(fineLocationPermission, coarseLocationPermission)
         )
@@ -391,7 +368,6 @@ private fun LocationSection(
                 }
             }
 
-            // Enhanced error display
             ValidationErrorText(errors = locationErrors)
 
             Button(
@@ -465,7 +441,6 @@ private fun ImagePickerSection(
                 )
             }
 
-            // Image Preview or Placeholder
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -483,7 +458,6 @@ private fun ImagePickerSection(
                 contentAlignment = Alignment.Center
             ) {
                 if (imageUri != null) {
-                    // Display actual image with remove option
                     Box(modifier = Modifier.fillMaxSize()) {
                         AsyncImage(
                             model = imageUri,
@@ -494,7 +468,6 @@ private fun ImagePickerSection(
                             contentScale = ContentScale.Crop
                         )
 
-                        // Remove image button
                         IconButton(
                             onClick = onRemoveImage,
                             modifier = Modifier
@@ -532,10 +505,8 @@ private fun ImagePickerSection(
                 }
             }
 
-            // Enhanced error display
             ValidationErrorText(errors = imageErrors)
 
-            // Image picker buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)

@@ -12,12 +12,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.google.firebase.auth.FirebaseAuth
+import uk.ac.tees.mad.fixit.presentation.feature.issuedetail.IssueDetailScreen
 import uk.ac.tees.mad.fixit.presentation.feature.profile.ProfileScreen
 import uk.ac.tees.mad.fixit.presentation.feature.reportissue.ReportIssueScreen
 import uk.ac.tees.mad.fixit.presentation.feature.viewreports.ViewReportsScreen
@@ -30,42 +33,49 @@ fun MainScreen(mainNavController: NavHostController) {
 
     Scaffold(
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
-            ) {
-                bottomNavItems.forEach { item ->
-                    NavigationBarItem(
-                        selected = currentRoute == item.route,
-                        onClick = {
-                            if (currentRoute != item.route) {
-                                bottomNavController.navigate(item.route) {
-                                    // Pop up to the start destination to avoid building up backstack
-                                    popUpTo(Screen.ReportIssue.route) {
-                                        saveState = true
+            // Only show bottom bar for main tabs, not for detail screens
+            if (currentRoute in listOf(
+                    Screen.ReportIssue.route,
+                    Screen.ViewReports.route,
+                    Screen.Profile.route
+                )) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp
+                ) {
+                    bottomNavItems.forEach { item ->
+                        NavigationBarItem(
+                            selected = currentRoute == item.route,
+                            onClick = {
+                                if (currentRoute != item.route) {
+                                    bottomNavController.navigate(item.route) {
+                                        // Pop up to the start destination to avoid building up backstack
+                                        popUpTo(bottomNavController.graph.startDestinationId) {
+                                            saveState = true
+                                        }
+                                        // Avoid multiple copies of same destination
+                                        launchSingleTop = true
+                                        // Restore state when reselecting a previously selected item
+                                        restoreState = true
                                     }
-                                    // Avoid multiple copies of same destination
-                                    launchSingleTop = true
-                                    // Restore state when reselecting a previously selected item
-                                    restoreState = true
                                 }
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = item.icon,
-                                contentDescription = item.label
+                            },
+                            icon = {
+                                Icon(
+                                    imageVector = item.icon,
+                                    contentDescription = item.label
+                                )
+                            },
+                            label = { Text(text = item.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        },
-                        label = { Text(text = item.label) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    )
+                    }
                 }
             }
         }
@@ -80,7 +90,7 @@ fun MainScreen(mainNavController: NavHostController) {
             }
 
             composable(Screen.ViewReports.route) {
-                ViewReportsScreen(navController = mainNavController)
+                ViewReportsScreen(navController = bottomNavController)
             }
 
             composable(Screen.Profile.route) {
@@ -91,6 +101,20 @@ fun MainScreen(mainNavController: NavHostController) {
                             popUpTo(Screen.Main.route) { inclusive = true }
                         }
                     }
+                )
+            }
+
+            composable(
+                route = Screen.IssueDetail.route,
+                arguments = listOf(
+                    navArgument("reportId") {
+                        type = androidx.navigation.NavType.StringType
+                    }
+                )
+            ) { backStackEntry ->
+                IssueDetailScreen(
+                    navController = bottomNavController,
+                    viewModel = hiltViewModel()
                 )
             }
         }
