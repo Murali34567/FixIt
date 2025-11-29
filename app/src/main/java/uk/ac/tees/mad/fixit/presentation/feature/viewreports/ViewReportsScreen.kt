@@ -34,6 +34,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -51,6 +52,9 @@ import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import kotlinx.coroutines.launch
 import uk.ac.tees.mad.fixit.presentation.navigation.Screen
+// Import the necessary functions
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,7 +62,9 @@ fun ViewReportsScreen(
     navController: NavController? = null,
     viewModel: ViewReportsViewModel = hiltViewModel()
 ) {
-    val uiState = viewModel.uiState.value
+    // ✅ FIXED: Use collectAsState() to observe changes to the UI state
+    val uiState by viewModel.uiState.collectAsState()
+
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
@@ -127,7 +133,7 @@ fun ViewReportsScreen(
                 // Reports Count
                 ReportsCount(
                     totalCount = uiState.reports.size,
-                    filteredCount = uiState.filteredReports.size,
+                    filteredCount = uiState.filteredReports.size, // This uses the computed property
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -135,18 +141,20 @@ fun ViewReportsScreen(
 
                 // Content
                 when {
-                    uiState.isLoading && uiState.reports.isEmpty() -> {
-                        // Initial loading
-                        LoadingShimmer(modifier = Modifier.weight(1f))
+                    uiState.isLoading && !uiState.hasReports -> {
+                        // Initial loading (show shimmer or simple indicator)
+                        LoadingShimmer(modifier = Modifier.weight(1f)) // Assuming this composable exists
                     }
                     uiState.showEmptyState -> {
+                        // Empty state
                         EmptyState(
                             hasSearchOrFilter = uiState.searchQuery.isNotBlank() || uiState.selectedFilter != null,
                             onClearFilters = viewModel::clearFilters,
                             modifier = Modifier.weight(1f)
                         )
                     }
-                    else -> {
+                    uiState.hasFilteredReports -> {
+                        // ✅ STATE-DRIVEN: Show list only when filteredReports is not empty
                         ReportsList(
                             reports = uiState.filteredReports,
                             onReportClick = { report ->
@@ -169,8 +177,9 @@ fun ViewReportsScreen(
                     }
                 }
 
-                // Loading indicator for actions (delete, etc.)
-                if (uiState.isLoading && uiState.reports.isNotEmpty()) {
+                // Loading indicator for actions (delete, etc.) or refresh
+                if (uiState.isLoading && uiState.hasReports) {
+                    // Show a smaller loading indicator if reports are already present
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -285,7 +294,6 @@ private fun ReportsCount(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
                     .background(
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                         shape = MaterialTheme.shapes.small
@@ -312,6 +320,7 @@ private fun ReportsList(
             items = reports,
             key = { it.id }
         ) { report ->
+            // Use the actual ReportListItem
             ReportListItem(
                 report = report,
                 onItemClick = onReportClick,

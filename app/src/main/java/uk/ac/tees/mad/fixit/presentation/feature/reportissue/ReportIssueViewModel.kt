@@ -6,8 +6,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +19,7 @@ import kotlinx.coroutines.launch
 import uk.ac.tees.mad.fixit.data.model.IssueLocation
 import uk.ac.tees.mad.fixit.data.model.IssueReport
 import uk.ac.tees.mad.fixit.data.model.IssueType
+import uk.ac.tees.mad.fixit.data.model.ReportStatus
 import uk.ac.tees.mad.fixit.data.model.Result
 import uk.ac.tees.mad.fixit.domain.repository.ImageUploadRepository
 import uk.ac.tees.mad.fixit.domain.repository.IssueRepository
@@ -31,15 +34,17 @@ class ReportIssueViewModel @Inject constructor(
     private val locationRepository: LocationRepository
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "ReportIssueViewModel"
+    }
+
     private val _uiState = MutableStateFlow(ReportIssueUiState())
     val uiState: StateFlow<ReportIssueUiState> = _uiState.asStateFlow()
 
     private val _uploadProgress = MutableStateFlow(0f)
     val uploadProgress: StateFlow<Float> = _uploadProgress.asStateFlow()
 
-    private companion object {
-        const val TAG = "ReportIssueViewModel"
-    }
+    private val auth = FirebaseAuth.getInstance()
 
     /**
      * Update the selected image URI
@@ -114,6 +119,7 @@ class ReportIssueViewModel @Inject constructor(
 
             result.fold(
                 onSuccess = { location ->
+                    Log.d(TAG, "✅ Location fetched: ${location.latitude}, ${location.longitude}")
                     _uiState.update {
                         it.copy(
                             location = location,
@@ -122,6 +128,7 @@ class ReportIssueViewModel @Inject constructor(
                     }
                 },
                 onFailure = { exception ->
+                    Log.e(TAG, "🔴 Location error: ${exception.message}")
                     _uiState.update {
                         it.copy(
                             locationErrors = listOf("Failed to get location: ${exception.message}"),
@@ -211,9 +218,24 @@ class ReportIssueViewModel @Inject constructor(
     }
 
     /**
-     * FIXED: Submit report using IssueRepository (saves to both local + Firebase)
+     * ✅ FIXED: Submit report with proper userId
      */
     fun submitReport(context: Context) {
+        val currentUser = auth.currentUser
+        if (currentUser == null) {
+            Log.e(TAG, "🔴 No authenticated user")
+            _uiState.update {
+                it.copy(
+                    errorMessage = "Not authenticated. Please log in.",
+                    isLoading = false
+                )
+            }
+            return
+        }
+
+        val userId = currentUser.uid
+        Log.d(TAG, "🟡 Submitting report for user: $userId")
+
         if (!isNetworkAvailable(context)) {
             _uiState.update {
                 it.copy(
@@ -253,10 +275,12 @@ class ReportIssueViewModel @Inject constructor(
                 }
 
                 // Step 1: Upload image to Supabase
+                Log.d(TAG, "🟡 Step 1: Uploading image...")
                 _uploadProgress.value = 0.3f
                 val imageUploadResult = uploadImageToSupabase(imageUri)
 
                 if (imageUploadResult is Result.Error) {
+                    Log.e(TAG, "🔴 Image upload failed: ${imageUploadResult.message}")
                     _uiState.update {
                         it.copy(
                             isLoading = false,
@@ -269,22 +293,30 @@ class ReportIssueViewModel @Inject constructor(
                 }
 
                 // Step 2: Create report with image URL
+                Log.d(TAG, "✅ Image uploaded successfully")
                 _uploadProgress.value = 0.6f
                 val imageUrl = (imageUploadResult as Result.Success).data
 
                 val report = IssueReport(
                     id = java.util.UUID.randomUUID().toString(),
+                    userId = userId, // ✅ Set userId from authenticated user
                     imageUrl = imageUrl,
                     description = _uiState.value.description.trim(),
                     issueType = _uiState.value.selectedIssueType,
                     location = _uiState.value.location ?: IssueLocation(),
+                    status = ReportStatus.PENDING,
                     timestamp = System.currentTimeMillis()
                 )
 
-                // Step 3: Save report using IssueRepository (handles both local + Firebase)
+                Log.d(TAG, "🟡 Step 2: Creating report...")
+                Log.d(TAG, "📄 Report ID: ${report.id}")
+                Log.d(TAG, "📄 User ID: ${report.userId}")
+
+                // Step 3: Save report using IssueRepository
                 _uploadProgress.value = 0.8f
                 when (val result = issueRepository.createReport(report)) {
                     is Result.Success -> {
+                        Log.d(TAG, "✅ Report created successfully!")
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
@@ -297,6 +329,7 @@ class ReportIssueViewModel @Inject constructor(
                         performHapticFeedback(context)
                     }
                     is Result.Error -> {
+                        Log.e(TAG, "🔴 Report creation failed: ${result.message}")
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
@@ -308,6 +341,7 @@ class ReportIssueViewModel @Inject constructor(
                         _uploadProgress.value = 0f
                     }
                     else -> {
+                        Log.e(TAG, "🔴 Unknown result")
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
@@ -321,6 +355,7 @@ class ReportIssueViewModel @Inject constructor(
                 }
 
             } catch (exception: Exception) {
+                Log.e(TAG, "🔴 Exception: ${exception.message}", exception)
                 _uiState.update {
                     it.copy(
                         isLoading = false,

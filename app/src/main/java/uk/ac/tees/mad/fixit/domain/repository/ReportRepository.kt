@@ -30,26 +30,33 @@ class ReportRepository @Inject constructor() {
         const val TAG = "ReportRepository"
     }
 
-    private fun getCurrentUserId(): String {
-        val currentUser = auth.currentUser
-        if (currentUser == null) {
-            Log.e(TAG, "❌ No authenticated user found")
-            throw Exception("User not authenticated")
-        }
-        Log.d(TAG, "✅ User ID: ${currentUser.uid}")
-        return currentUser.uid
-    }
-
     private fun getReportsRef() = database.getReference("reports")
     private fun getUserReportsRef(userId: String) = getReportsRef().child(userId)
 
+    /**
+     * ✅ FIXED: Create report with proper userId handling
+     */
     suspend fun createReport(report: IssueReport): Flow<Result<String>> = callbackFlow {
         Log.d(TAG, "📝 Creating report...")
 
         try {
-            val userId = getCurrentUserId()
+            // Get current user ID
+            val currentUser = auth.currentUser
+            if (currentUser == null) {
+                Log.e(TAG, "❌ No authenticated user")
+                trySend(Result.Error("User not authenticated"))
+                close()
+                return@callbackFlow
+            }
+
+            val userId = currentUser.uid
             val reportId = report.id.ifEmpty { UUID.randomUUID().toString() }
-            val reportWithId = report.copy(id = reportId, userId = userId)
+
+            // Create report with userId
+            val reportWithId = report.copy(
+                id = reportId,
+                userId = userId
+            )
 
             Log.d(TAG, "📤 Saving to: reports/$userId/$reportId")
             Log.d(TAG, "📄 Data: ${reportWithId.toMap()}")
@@ -86,11 +93,18 @@ class ReportRepository @Inject constructor() {
     }
 
     /**
-     * 🔥 FIXED: Get all reports with proper logging
+     * ✅ FIXED: Get reports with proper error handling and logging (REAL-TIME LISTENER)
      */
     fun getReportsByUserId(userId: String): Flow<Result<List<IssueReport>>> = callbackFlow {
-        Log.d(TAG, "📥 Fetching reports for user: $userId")
+        Log.d(TAG, "🔥 Fetching reports for user: $userId (REAL-TIME)")
         Log.d(TAG, "📍 Firebase path: reports/$userId")
+
+        if (userId.isBlank()) {
+            Log.e(TAG, "🔴 User ID is blank!")
+            trySend(Result.Error("Invalid user ID"))
+            close()
+            return@callbackFlow
+        }
 
         try {
             trySend(Result.Loading)
@@ -109,15 +123,14 @@ class ReportRepository @Inject constructor() {
                             val reportMap = child.value as? Map<*, *>
 
                             if (reportMap != null) {
-                                Log.d(TAG, "  Report data: $reportMap")
                                 val report = mapToIssueReport(reportMap as Map<String, Any>)
                                 reports.add(report)
-                                Log.d(TAG, "  ✅ Parsed: ${report.issueType.displayName}")
+                                Log.d(TAG, "  ✅ Parsed: ${report.issueType.displayName} - ${report.id}")
                             } else {
                                 Log.w(TAG, "  ⚠️ Child $index has null data")
                             }
                         } catch (e: Exception) {
-                            Log.e(TAG, "  🔴 Error parsing child $index: ${e.message}")
+                            Log.e(TAG, "  🔴 Error parsing child $index: ${e.message}", e)
                         }
                     }
 
@@ -148,9 +161,60 @@ class ReportRepository @Inject constructor() {
         }
     }
 
+    /**
+     * ✅ NEW: Get reports with a single fetch (not real-time) for sync operations
+     */
+    suspend fun getReportsByUserIdOnce(userId: String): Result<List<IssueReport>> {
+        Log.d(TAG, "🔥 Fetching reports ONCE for user: $userId")
+        Log.d(TAG, "📍 Firebase path: reports/$userId")
+
+        if (userId.isBlank()) {
+            Log.e(TAG, "🔴 User ID is blank!")
+            return Result.Error("Invalid user ID")
+        }
+
+        return try {
+            val snapshot = getUserReportsRef(userId).get().await() // Use .get() for one-time read
+
+            Log.d(TAG, "📊 Firebase get() snapshot exists: ${snapshot.exists()}")
+            Log.d(TAG, "📊 Children count: ${snapshot.childrenCount}")
+
+            val reports = mutableListOf<IssueReport>()
+            snapshot.children.forEachIndexed { index, child ->
+                try {
+                    Log.d(TAG, "  Processing child $index: ${child.key}")
+                    val reportMap = child.value as? Map<*, *>
+
+                    if (reportMap != null) {
+                        val report = mapToIssueReport(reportMap as Map<String, Any>)
+                        reports.add(report)
+                        Log.d(TAG, "  ✅ Parsed: ${report.issueType.displayName} - ${report.id}")
+                    } else {
+                        Log.w(TAG, "  ⚠️ Child $index has null data")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "  🔴 Error parsing child $index: ${e.message}", e)
+                }
+            }
+            Log.d(TAG, "✅ Successfully parsed ${reports.size} reports (once)")
+            Result.Success(reports)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "🔴 Firebase get() error: ${e.message}", e)
+            Result.Error("Failed to get reports: ${e.message}", e)
+        }
+    }
+
     suspend fun updateReport(reportId: String, report: IssueReport): Flow<Result<Boolean>> = callbackFlow {
         try {
-            val userId = getCurrentUserId()
+            val currentUser = auth.currentUser
+            if (currentUser == null) {
+                trySend(Result.Error("User not authenticated"))
+                close()
+                return@callbackFlow
+            }
+
+            val userId = currentUser.uid
             trySend(Result.Loading)
 
             getUserReportsRef(userId).child(reportId).setValue(report.toMap())
@@ -176,7 +240,14 @@ class ReportRepository @Inject constructor() {
 
     suspend fun getReportById(reportId: String): Flow<Result<IssueReport>> = callbackFlow {
         try {
-            val userId = getCurrentUserId()
+            val currentUser = auth.currentUser
+            if (currentUser == null) {
+                trySend(Result.Error("User not authenticated"))
+                close()
+                return@callbackFlow
+            }
+
+            val userId = currentUser.uid
             trySend(Result.Loading)
 
             getUserReportsRef(userId).child(reportId).get()
@@ -208,7 +279,14 @@ class ReportRepository @Inject constructor() {
 
     suspend fun deleteReport(reportId: String): Flow<Result<Boolean>> = callbackFlow {
         try {
-            val userId = getCurrentUserId()
+            val currentUser = auth.currentUser
+            if (currentUser == null) {
+                trySend(Result.Error("User not authenticated"))
+                close()
+                return@callbackFlow
+            }
+
+            val userId = currentUser.uid
             trySend(Result.Loading)
 
             getUserReportsRef(userId).child(reportId).removeValue()
