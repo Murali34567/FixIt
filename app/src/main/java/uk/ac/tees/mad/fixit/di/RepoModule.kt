@@ -12,6 +12,7 @@ import uk.ac.tees.mad.fixit.domain.repository.AuthRepository
 import uk.ac.tees.mad.fixit.domain.repository.ImageUploadRepository
 import uk.ac.tees.mad.fixit.domain.repository.IssueRepository
 import uk.ac.tees.mad.fixit.domain.repository.LocationRepository
+import uk.ac.tees.mad.fixit.domain.repository.ProfileRepository
 import uk.ac.tees.mad.fixit.domain.repository.ReportRepository
 import uk.ac.tees.mad.fixit.domain.util.NetworkHelper
 import uk.ac.tees.mad.fixit.domain.util.SyncManager
@@ -78,5 +79,12 @@ object RepositoryModule {
         syncManager: SyncManager
     ): IssueRepository {
         return IssueRepository(localDao, remoteRepository, networkHelper, syncManager)
+    }
+
+    // âœ… NEW: Profile Repository
+    @Provides
+    @Singleton
+    fun provideProfileRepository(@ApplicationContext context: Context): ProfileRepository {
+        return ProfileRepository(context)
     }
 }

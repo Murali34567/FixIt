@@ -4,4 +4,8 @@
         <external-files-path name="my_images" path="Pictures/" />
         <cache-path name="my_cache" path="/" />
     </paths>
+
+    <paths>
+        <cache-path name="profile_images" path="/" />
+    </paths>
 </resources>
