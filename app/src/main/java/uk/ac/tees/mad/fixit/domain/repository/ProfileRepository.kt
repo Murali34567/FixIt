@@ -60,11 +60,11 @@ class ProfileRepository @Inject constructor(
                             trySend(Result.Success(profile))
                         } else {
                             // Create default profile from Firebase Auth data
-                            createDefaultProfile(currentUser.email ?: "")
+                            createDefaultProfileNonSuspend(currentUser.email ?: "")
                         }
                     } else {
                         // Profile doesn't exist, create one
-                        createDefaultProfile(currentUser.email ?: "")
+                        createDefaultProfileNonSuspend(currentUser.email ?: "")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing profile: ${e.message}", e)
@@ -86,9 +86,9 @@ class ProfileRepository @Inject constructor(
     }
 
     /**
-     * Create a default profile for new users
+     * Create a default profile for new users (non-suspend version)
      */
-    private suspend fun createDefaultProfile(email: String) {
+    private fun createDefaultProfileNonSuspend(email: String) {
         val currentUser = auth.currentUser ?: return
 
         val profile = UserProfile(
@@ -103,12 +103,13 @@ class ProfileRepository @Inject constructor(
             lastUpdated = System.currentTimeMillis()
         )
 
-        try {
-            getUserRef(currentUser.uid).setValue(profile.toMap()).await()
-            Log.d(TAG, "Default profile created for user: ${currentUser.uid}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create default profile: ${e.message}", e)
-        }
+        getUserRef(currentUser.uid).setValue(profile.toMap())
+            .addOnSuccessListener {
+                Log.d(TAG, "Default profile created for user: ${currentUser.uid}")
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to create default profile: ${e.message}", e)
+            }
     }
 
     /**
@@ -117,9 +118,7 @@ class ProfileRepository @Inject constructor(
     suspend fun updateProfile(profile: UserProfile): Result<Boolean> {
         return try {
             val currentUser = auth.currentUser
-            if (currentUser == null) {
-                return Result.Error("User not authenticated")
-            }
+                ?: return Result.Error("User not authenticated")
 
             val updatedProfile = profile.copy(
                 lastUpdated = System.currentTimeMillis()
@@ -155,9 +154,7 @@ class ProfileRepository @Inject constructor(
     ): Result<Boolean> {
         return try {
             val currentUser = auth.currentUser
-            if (currentUser == null) {
-                return Result.Error("User not authenticated")
-            }
+                ?: return Result.Error("User not authenticated")
 
             val updates = mapOf(
                 "notificationsEnabled" to notificationsEnabled,
@@ -185,11 +182,10 @@ class ProfileRepository @Inject constructor(
     ): Result<String> {
         return try {
             val currentUser = auth.currentUser
-            if (currentUser == null) {
-                return Result.Error("User not authenticated")
-            }
+                ?: return Result.Error("User not authenticated")
 
             var uploadedUrl = ""
+            var errorMessage = ""
 
             // Upload image using existing ImageUploadRepository
             imageUploadRepository.uploadImage(
@@ -198,9 +194,13 @@ class ProfileRepository @Inject constructor(
             ).collect { result ->
                 when (result) {
                     is Result.Success -> uploadedUrl = result.data
-                    is Result.Error -> return Result.Error(result.message)
+                    is Result.Error -> errorMessage = result.message
                     is Result.Loading -> { /* Continue */ }
                 }
+            }
+
+            if (errorMessage.isNotBlank()) {
+                return Result.Error(errorMessage)
             }
 
             if (uploadedUrl.isBlank()) {
@@ -229,9 +229,7 @@ class ProfileRepository @Inject constructor(
     suspend fun deleteAccount(): Result<Boolean> {
         return try {
             val currentUser = auth.currentUser
-            if (currentUser == null) {
-                return Result.Error("User not authenticated")
-            }
+                ?: return Result.Error("User not authenticated")
 
             val userId = currentUser.uid
 
