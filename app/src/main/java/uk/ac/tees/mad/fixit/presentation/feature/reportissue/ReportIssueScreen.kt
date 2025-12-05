@@ -512,7 +512,7 @@ private fun ImagePickerSection(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedButton(
-                    onClick = onCameraClick,
+                    onClick = { onCameraClick() },
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(

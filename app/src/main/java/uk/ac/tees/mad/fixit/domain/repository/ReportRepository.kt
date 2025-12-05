@@ -23,7 +23,7 @@ import java.util.UUID
 
 class ReportRepository @Inject constructor() {
 
-    private val database: FirebaseDatabase = Firebase.database("https://fixit-7531c-default-rtdb.asia-southeast1.firebasedatabase.app/")
+    private val database: FirebaseDatabase = Firebase.database("https://fixit-83fcd-default-rtdb.firebaseio.com/")
     private val auth: FirebaseAuth = Firebase.auth
 
     private companion object {

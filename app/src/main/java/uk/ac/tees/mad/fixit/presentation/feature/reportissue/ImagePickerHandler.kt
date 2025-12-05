@@ -5,7 +5,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
@@ -60,7 +62,7 @@ class ImagePickerHandler(
             galleryLauncher = galleryLauncher,
             cameraPermissionLauncher = cameraPermissionLauncher,
             onCameraClick = {
-                checkCameraPermission(cameraPermissionLauncher)
+                checkCameraPermission(cameraPermissionLauncher,cameraLauncher)
             },
             onGalleryClick = {
                 galleryLauncher.launch("image/*")
@@ -68,13 +70,16 @@ class ImagePickerHandler(
         )
     }
 
-    private fun checkCameraPermission(permissionLauncher: androidx.activity.result.ActivityResultLauncher<String>) {
+    private fun checkCameraPermission(
+        permissionLauncher: ActivityResultLauncher<String>,
+        cameraLauncher: ManagedActivityResultLauncher<Uri, Boolean>
+    ) {
         when {
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.CAMERA
             ) == PackageManager.PERMISSION_GRANTED -> {
-                // Permission already granted
+                launchCamera(cameraLauncher)
             }
             else -> {
                 permissionLauncher.launch(Manifest.permission.CAMERA)

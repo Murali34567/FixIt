@@ -1,13 +1,14 @@
 {
   "project_info": {
-    "project_number": "760026169497",
-    "project_id": "fixit-7531c",
-    "storage_bucket": "fixit-7531c.firebasestorage.app"
+    "project_number": "1020820878960",
+    "firebase_url": "https://fixit-83fcd-default-rtdb.firebaseio.com",
+    "project_id": "fixit-83fcd",
+    "storage_bucket": "fixit-83fcd.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:760026169497:android:586248a583d5c6b7703808",
+        "mobilesdk_app_id": "1:1020820878960:android:c71f2e85db3e00e4a0e6b5",
         "android_client_info": {
           "package_name": "uk.ac.tees.mad.fixit"
         }
@@ -15,7 +16,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBgur86qGB_lUTc72RtjaaNACkkX1bT4Aw"
+          "current_key": "AIzaSyAHeM5xWcqugjVfxVxZPLS8zsQgkBR3B9w"
         }
       ],
       "services": {
