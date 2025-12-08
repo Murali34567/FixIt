@@ -835,7 +835,7 @@ private fun createImageUri(context: android.content.Context): Uri {
     )
     return FileProvider.getUriForFile(
         context,
-        "${context.packageName}.provider",
+        "${context.packageName}.fileprovider",
         imageFile
     )
 }
